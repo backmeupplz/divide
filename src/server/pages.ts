@@ -42,7 +42,7 @@ export function metaTags(base: string, m: Meta) {
 export function homeMeta(base: string): Meta {
   return {
     title: `${GAME_NAME}: the Farcaster split, as a game`,
-    description: 'Pick a side (Quilibrium, Network School, Hypersnap or Snapchain) and take the network in a live multiplayer street war.',
+    description: 'Pick a side, Quilibrium or Network School, and take the network in a live multiplayer street war.',
     image: `${base}/og/default.png`,
     url: base,
     button: 'Join the war',
@@ -86,9 +86,9 @@ export function manifest(base: string, env: Record<string, string | undefined> =
     splashImageUrl: `${base}/splash.png`,
     splashBackgroundColor: SPLASH_BG,
     subtitle: 'The Farcaster split, as a game',
-    description: 'Pick a side in the Farcaster split (Quilibrium, Network School, Hypersnap or Snapchain) and take the network in a live multiplayer war.',
+    description: 'Pick a side in the Farcaster split, Quilibrium or Network School, and take the network in a live multiplayer war.',
     primaryCategory: 'games',
-    tags: ['game', 'multiplayer', 'farcaster', 'hypersnap', 'strategy'],
+    tags: ['game', 'multiplayer', 'farcaster', 'quilibrium', 'strategy'],
     tagline: 'Pick a side. Take the network.',
     heroImageUrl: `${base}/og/hero.png`,
     ogTitle: GAME_NAME,

@@ -4,7 +4,7 @@
 import { Resvg } from '@resvg/resvg-js'
 import { join } from 'node:path'
 import { deflateSync } from 'node:zlib'
-import { FACTIONS, MENU_CYAN, NEUTRAL_COLOR, SKY_BOTTOM, SKY_TOP, faction, emblem } from '../shared/factions'
+import { FACTIONS, MENU_CYAN, NEUTRAL_COLOR, NS, QUIL, SKY_BOTTOM, SKY_TOP, faction, emblem } from '../shared/factions'
 import { FONT, cityScene, rain, wordmark } from '../shared/keyart'
 import type { Battle } from '../shared/protocol'
 
@@ -77,6 +77,9 @@ export const plain = (s: string, max = 24) => {
 }
 
 /** a hex-tile disc split into faction territories, like the planet in the game */
+/** x of the i-th faction badge, centred on the card */
+const slot = (i: number) => 600 + (i - (FACTIONS.length - 1) / 2) * 160
+
 function planetArt(cx: number, cy: number, r: number, shares: number[], seed = 1) {
   const total = Math.max(1, shares.reduce((a, b) => a + b, 0))
   const fills: { color: string; end: number }[] = []
@@ -149,7 +152,8 @@ function bars(x: number, y: number, width: number, values: number[], total: numb
     .map((v, i) => {
       const f = FACTIONS[i]
       const pct = total ? (v / total) * 100 : 0
-      const yy = y + i * 66
+      // the rows share the space four rows used to fill
+      const yy = y + i * Math.min(110, 264 / values.length)
       return `
       <g transform="translate(${x + 18} ${yy - 10}) scale(0.26)">${emblem(f.id, FONT)}</g>
       <text x="${x + 44}" y="${yy}" font-family="Inter" font-weight="700" font-size="27" fill="#ffffff">${esc(f.name)}</text>
@@ -172,7 +176,7 @@ export function battleSvg(b: Battle) {
     ${panel(330, 222, 540, 520)}
     <g transform="translate(386 282) scale(0.42)">${emblem(w.id, FONT)}</g>
     <text x="424" y="298" font-family="Inter" font-weight="700" font-size="44" fill="${w.color}">${esc(w.name)} won</text>
-    ${bars(362, 372, 476, b.counts, total, (_i, pct) => `${pct.toFixed(1)}%`)}
+    ${bars(362, 400, 476, b.counts, total, (_i, pct) => `${pct.toFixed(1)}%`)}
     <text x="600" y="660" font-family="Inter" font-size="24" fill="#b9bfdc" text-anchor="middle">${b.players} players${mvp ? ` · MVP ${esc(plain(mvp.name))} (${mvp.captured} tiles)` : ''}</text>
     ${cyan(600, 712, 30, 'Pick a side for the next round')}`)
 }
@@ -187,8 +191,8 @@ export function lobbySvg(id: string, sizes: number[] | null) {
     ${
       sizes && players
         ? bars(362, 412, 476, sizes, players, (i) => `${sizes[i]} ${sizes[i] === 1 ? 'player' : 'players'}`)
-        : `${FACTIONS.map((f, i) => `<g transform="translate(${420 + i * 120} 470) scale(0.62)">${emblem(f.id, FONT)}</g><text x="${420 + i * 120}" y="538" font-family="Inter" font-weight="700" font-size="19" fill="${f.color}" text-anchor="middle">${f.name.split(' ').map((w, k) => `<tspan x="${420 + i * 120}" dy="${k ? 22 : 0}">${esc(w)}</tspan>`).join('')}</text>`).join('')}
-    <text x="600" y="606" font-family="Inter" font-size="26" fill="#d4d8ee" text-anchor="middle">Four sides, one network, no player cap.</text>`
+        : `${FACTIONS.map((f, i) => `<g transform="translate(${slot(i)} 470) scale(0.62)">${emblem(f.id, FONT)}</g><text x="${slot(i)}" y="538" font-family="Inter" font-weight="700" font-size="19" fill="${f.color}" text-anchor="middle">${f.name.split(' ').map((w, k) => `<tspan x="${slot(i)}" dy="${k ? 22 : 0}">${esc(w)}</tspan>`).join('')}</text>`).join('')}
+    <text x="600" y="606" font-family="Inter" font-size="26" fill="#d4d8ee" text-anchor="middle">Two sides, one network, no player cap.</text>`
     }
     ${cyan(600, 712, 32, 'Tap to pick a side')}`)
 }
@@ -196,12 +200,12 @@ export function lobbySvg(id: string, sizes: number[] | null) {
 export function defaultSvg() {
   return frame(
     `
-    ${planetArt(600, 470, 150, [3, 2, 2, 2, 3], 3)}
+    ${planetArt(600, 470, 150, [4, 4, 2], 3)}
     <defs><linearGradient id="band" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#07060d" stop-opacity="0"/><stop offset="0.45" stop-color="#07060d" stop-opacity="0.8"/><stop offset="1" stop-color="#07060d" stop-opacity="0.9"/></linearGradient></defs>
     <rect y="620" width="1200" height="180" fill="url(#band)"/>
     ${wordmark(600, 30, 66)}
     ${cyan(600, 700, 34, 'Pick a side. Claim the network.')}
-    <text x="600" y="748" font-family="Inter" font-size="24" fill="#d4d8ee" text-anchor="middle">Hypersnap · Snapchain · Network School · Quilibrium</text>`,
+    <text x="600" y="748" font-family="Inter" font-size="24" fill="#d4d8ee" text-anchor="middle">Network School vs Quilibrium</text>`,
     0.25,
   )
 }
@@ -211,7 +215,7 @@ export const HERO_H = 630
 export function heroSvg() {
   return frame(
     `
-    ${planetArt(600, 380, 120, [3, 2, 2, 2, 3], 3)}
+    ${planetArt(600, 380, 120, [4, 4, 2], 3)}
     ${wordmark(600, 22, 52)}
     <defs><linearGradient id="band" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#07060d" stop-opacity="0"/><stop offset="0.45" stop-color="#07060d" stop-opacity="0.8"/><stop offset="1" stop-color="#07060d" stop-opacity="0.9"/></linearGradient></defs>
     <rect y="500" width="1200" height="130" fill="url(#band)"/>
@@ -226,8 +230,8 @@ export function iconSvg() {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 ${s} ${s}">
   <defs><linearGradient id="isky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${SKY_TOP}"/><stop offset="1" stop-color="${SKY_BOTTOM}"/></linearGradient></defs>
   <rect width="${s}" height="${s}" fill="url(#isky)"/>
-  ${planetArt(512, 540, 330, [1, 1, 1, 1], 0)}
-  <g transform="translate(250 230) scale(1.6)">${emblem(4, FONT)}</g>
-  <g transform="translate(774 230) scale(1.6)">${emblem(3, FONT)}</g>
+  ${planetArt(512, 540, 330, [1, 1], 0)}
+  <g transform="translate(250 230) scale(1.6)">${emblem(QUIL, FONT)}</g>
+  <g transform="translate(774 230) scale(1.6)">${emblem(NS, FONT)}</g>
   ${rain(s, s, 90, 5)}</svg>`
 }

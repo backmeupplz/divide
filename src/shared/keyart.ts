@@ -3,15 +3,15 @@
 // its searchlights, banners, surveillance screen and checkpoint). Plain SVG, so the menu draws it
 // in the browser and the share images draw the same thing on the server with resvg.
 
-import { FACTIONS, SKY_BOTTOM, SKY_TOP, TITLE_BOTTOM, TITLE_PINK, TITLE_TOP, emblem } from './factions'
+import { FACTIONS, NS as NS_ID, QUIL, SKY_BOTTOM, SKY_TOP, TITLE_BOTTOM, TITLE_PINK, TITLE_TOP, emblem } from './factions'
 
 export const FONT = 'Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif'
 /** both sides are drawn in this box, standing on its bottom edge */
 export const SIDE_W = 600
 export const SIDE_H = 700
 
-const Q = FACTIONS[3]
-const NS = FACTIONS[2]
+const Q = FACTIONS[QUIL - 1]
+const NS = FACTIONS[NS_ID - 1]
 
 function rng(seed: number) {
   return () => ((seed = (seed * 16807) % 2147483647) / 2147483647)
@@ -55,7 +55,7 @@ export function resistanceSide(p = 'r') {
   <path d="M432 700 L468 206" stroke="#2e2a33" stroke-width="7" stroke-linecap="round"/>
   <path d="M466 216 C500 206 530 230 586 214 L578 248 L590 262 L574 280 L586 300 C540 312 500 290 458 304 Z" fill="${Q.color}"/>
   <path d="M461 272 C500 262 540 284 584 274 L574 290 L586 300 C540 312 500 290 458 304 Z" fill="${Q.accent}"/>
-  <g transform="translate(518 256) scale(0.34)">${emblem(4, FONT)}</g>
+  <g transform="translate(518 256) scale(0.34)">${emblem(QUIL, FONT)}</g>
   <circle cx="92" cy="612" r="90" fill="url(#${p}fire)"/>
   <path d="M70 600 C74 572 86 586 90 560 C98 578 104 570 108 548 C116 574 120 586 116 604 Z" fill="url(#${p}flame)"/>
   <rect x="64" y="600" width="58" height="100" rx="5" fill="#5a2e22"/>
@@ -76,7 +76,7 @@ export function occupationSide(p = 'o') {
     glitch.push(`<rect x="${f1(290 + screenBars() * 120)}" y="${f1(y)}" width="${f1(40 + screenBars() * 110)}" height="${f1(3 + screenBars() * 7)}" fill="#e3ccff" opacity="${f1(0.25 + screenBars() * 0.5)}"/>`)
   }
   const banner = (x: number) =>
-    `<rect x="${x}" y="300" width="34" height="150" fill="${NS.color}" opacity="0.9"/><path d="M${x} 450 L${x + 17} 438 L${x + 34} 450 Z" fill="#1a1426"/><g transform="translate(${x + 17} 330) scale(0.22)">${emblem(3, FONT)}</g>`
+    `<rect x="${x}" y="300" width="34" height="150" fill="${NS.color}" opacity="0.9"/><path d="M${x} 450 L${x + 17} 438 L${x + 34} 450 Z" fill="#1a1426"/><g transform="translate(${x + 17} 330) scale(0.22)">${emblem(NS_ID, FONT)}</g>`
   return `
   <defs>
     <linearGradient id="${p}beam" x1="1" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#c9a6ff" stop-opacity="0.55"/><stop offset="1" stop-color="#9b5cff" stop-opacity="0"/></linearGradient>
@@ -92,7 +92,7 @@ export function occupationSide(p = 'o') {
   ${windows(250, 470, 7, 4, 40, 22, 50, 40, '#b48cff', '#141526', 0.55, 3)}
   ${windows(250, 90, 2, 8, 40, 22, 290, 40, '#b48cff', '#141526', 0.5, 9)}
   <circle cx="415" cy="140" r="110" fill="url(#${p}glow)"/>
-  <g transform="translate(415 142) scale(0.95)">${emblem(3, FONT)}</g>
+  <g transform="translate(415 142) scale(0.95)">${emblem(NS_ID, FONT)}</g>
   <rect x="282" y="252" width="266" height="190" fill="#090614"/>
   <rect x="290" y="260" width="250" height="174" fill="#3a1f78"/>
   <ellipse cx="415" cy="347" rx="70" ry="38" fill="none" stroke="#d9c2ff" stroke-width="6" opacity="0.8"/>

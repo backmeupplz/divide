@@ -155,9 +155,9 @@ export class Room {
     this.counts.fill(0)
     this.phase = 'play'
     this.endsAt = this.now() + ROUND_MS
-    // the factions start at the corners of a tetrahedron
+    // the two sides start on opposite poles
     const corners = [
-      [1, 1, 1], [-1, -1, 1], [-1, 1, -1], [1, -1, -1],
+      [1, 1, 1], [-1, -1, -1],
     ]
     const radius = Math.max(2, Math.round(subdiv / 5))
     for (let f = 1; f <= FACTION_COUNT; f++) {

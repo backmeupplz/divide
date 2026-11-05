@@ -1,6 +1,6 @@
 # The Network Divide
 
-**The Network Divide** is a live multiplayer territory war about the Farcaster split. Pick a side (Quilibrium's resistance, the Network School occupation, the Hypersnap fork or the old Snapchain guard) and fight over a small hex planet hanging over a rainy, neon-lit street, in your browser or as a Farcaster mini app.
+**The Network Divide** is a live multiplayer territory war about the Farcaster split. Pick a side, Quilibrium's resistance or the Network School occupation, and fight over a small hex planet hanging over a rainy, neon-lit street, in your browser or as a Farcaster mini app.
 
 Play at **https://divide.borodutch.com**.
 
@@ -8,7 +8,7 @@ Play at **https://divide.borodutch.com**.
 
 Each player is a glowing node on a planet made of hex tiles. While you are inside your faction's territory you are safe. When you leave it, you draw a trail behind you, and when you get back home the trail and everything it fenced off becomes your faction's land, including enemy tiles caught inside. An enemy who crosses your trail cuts it and sends you back to respawn, so long trips are greedy and risky.
 
-Rounds last four minutes. As the clock runs down, the planet cracks open along the borders between factions, and when time is up the faction holding the most of the planet wins. The round ends with a result card you can cast, and the next round starts twelve seconds later.
+Rounds last four minutes. As the clock runs down, the planet cracks open along the borders between factions, and when time is up the side holding more of the planet wins. The round ends with a result card you can cast, and the next round starts twelve seconds later.
 
 - **No player cap.** Anyone can join a match, and the planet grows with the crowd (from 1,962 tiles up to 40,962). Bots fill quiet matches up to twelve players so there is always a fight.
 - **Balanced sides.** Pick a faction yourself or let the game put you on the smallest one.
@@ -22,8 +22,6 @@ Rounds last four minutes. As the clock runs down, the planet cracks open along t
 | --- | --- | --- | --- |
 | Quilibrium | The resistance | round Q, magenta with an orange tail | Fully decentralized. Mostly vibes, all math. |
 | Network School | The occupation | NS hex badge, violet | New management. Please report to orientation. |
-| Hypersnap | The fork | forked branch in a diamond, orange | The community fork. Forks are a feature. |
-| Snapchain | The old guard | chain links, teal | The original chain. Still producing blocks. |
 
 ## The look
 

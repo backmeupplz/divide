@@ -46,9 +46,9 @@ const game = {
   phase: 'play' as 'play' | 'end',
   endsAt: 0,
   skew: 0,
-  counts: [0, 0, 0, 0],
+  counts: FACTIONS.map(() => 0),
   total: 1,
-  sizes: [0, 0, 0, 0],
+  sizes: FACTIONS.map(() => 0),
   top: [] as Standing[],
   me: null as Me | null,
   names: new Map<number, string>(),
@@ -219,7 +219,7 @@ async function newLobby() {
 }
 
 function invite(room: string) {
-  if (room === WORLD) cast('Join the war over the Farcaster split in The Network Divide ⚔️ Pick a side: Quilibrium, Network School, Hypersnap or Snapchain.', location.origin)
+  if (room === WORLD) cast('Join the war over the Farcaster split in The Network Divide ⚔️ Pick a side: Quilibrium or Network School.', location.origin)
   else cast(`Join my Network Divide lobby and pick a side in the Farcaster split ⚔️`, `${location.origin}/lobby/${room}`)
 }
 

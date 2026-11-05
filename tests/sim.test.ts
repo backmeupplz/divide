@@ -123,7 +123,7 @@ describe('capture', () => {
     const { room, r } = emptyRoom()
     for (const t of room.ring(0, 2)) r.setOwner(t, 1)
     const p = room.addPlayer('me', 1, null)
-    const q = room.addPlayer('them', 3, null)
+    const q = room.addPlayer('them', 2, null)
     const out = ringOnly(room, 0, 4)
     room.enter(p, out[0])
     room.enter(p, out[1])
@@ -200,7 +200,7 @@ describe('room', () => {
     for (let i = 0; i < 8; i++) room.addPlayer(`h${i}`, 0, null)
     expect(room.players.size).toBe(MIN_POPULATION)
     const humans = [...room.players.values()].filter((p) => !p.bot)
-    const per = [0, 0, 0, 0]
+    const per = [0, 0]
     for (const h of humans) per[h.faction - 1]++
     expect(Math.max(...per) - Math.min(...per)).toBeLessThanOrEqual(1)
   })

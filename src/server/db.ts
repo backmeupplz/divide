@@ -1,6 +1,7 @@
 import { Database } from 'bun:sqlite'
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { FACTION_COUNT } from '../shared/factions'
 import type { Battle } from '../shared/protocol'
 
 export type Store = {
@@ -32,7 +33,9 @@ export function openStore(dir = process.env.DATA_DIR ?? './data'): Store {
     },
     battle(id) {
       const row = select.get(id)
-      return row ? (JSON.parse(row.data) as Battle) : null
+      const b = row ? (JSON.parse(row.data) as Battle) : null
+      // battles from the four-faction days don't map onto today's sides: treat them as gone
+      return b && b.counts.length === FACTION_COUNT ? b : null
     },
     saveLobby(id, expires) {
       putLobby.run(id, expires)
