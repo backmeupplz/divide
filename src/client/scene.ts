@@ -533,7 +533,11 @@ export class Scene {
       g.beginPath()
       g.arc(S / 2, S / 2, S / 2 - 12, 0, Math.PI * 2)
       g.clip()
-      if (img) g.drawImage(img, 12, 12, S - 24, S - 24)
+      if (img) {
+        // a centered square of the picture, so wide or tall pfps are cropped, never squished
+        const side = Math.min(img.naturalWidth, img.naturalHeight)
+        g.drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 12, 12, S - 24, S - 24)
+      }
       else {
         g.fillStyle = '#140c22'
         g.fillRect(0, 0, S, S)

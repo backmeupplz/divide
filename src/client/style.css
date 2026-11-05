@@ -81,7 +81,7 @@ button.primary.play:hover { transform: translateY(-1px); box-shadow: 0 12px 36px
 .nick:focus { border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(95, 244, 255, 0.15); }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 .who { display: flex; align-items: center; gap: 10px; justify-content: center; color: #d4d8ee; }
-.who img { width: 28px; height: 28px; border-radius: 50%; }
+.who img { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; }
 .live { display: flex; align-items: center; justify-content: center; gap: 8px; text-align: center; }
 .live .dot { width: 8px; height: 8px; border-radius: 50%; background: #6ee7b7; box-shadow: 0 0 8px #6ee7b7; animation: pulse 1.6s infinite; flex: none; }
 .tools { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
