@@ -35,6 +35,7 @@ const save = (k: string, v: string) => {
 let pick = Number(load('divide:faction') ?? 0) || 0
 let nick = load('divide:nick') ?? ''
 
+const n = (k: number, w: string) => `${k} ${w}${k === 1 ? '' : 's'}`
 type Me = { captured: number; cuts: number; deaths: number; rank: number }
 const game = {
   net: null as Net | null,
@@ -385,8 +386,8 @@ function updateHud() {
   const board = ui.querySelector('.board')
   if (board)
     board.innerHTML = `<div class="eyebrow">Top players</div>${game.top
-      .map((s, i) => `<div class="rowp"><span>${i + 1}. <b style="color:${faction(s.faction)?.color}">${esc(s.name)}</b></span><span>${s.captured} tiles · ${s.cuts} cuts</span></div>`)
-      .join('')}${game.me ? `<div class="rowp you"><span>You: #${game.me.rank}</span><span>${game.me.captured} tiles · ${game.me.cuts} cuts</span></div>` : ''}`
+      .map((s, i) => `<div class="rowp"><span>${i + 1}. <b style="color:${faction(s.faction)?.color}">${esc(s.name)}</b></span><span>${n(s.captured, 'tile')} · ${n(s.cuts, 'cut')}</span></div>`)
+      .join('')}${game.me ? `<div class="rowp you"><span>You: #${game.me.rank}</span><span>${n(game.me.captured, 'tile')} · ${n(game.me.cuts, 'cut')}</span></div>` : ''}`
   updateMe()
 }
 
@@ -395,7 +396,7 @@ function updateMe() {
   const f = faction(game.faction)
   if (!el || !f) return
   const me = game.me
-  el.innerHTML = `<b style="color:${f.color}">${esc(f.name)}</b> · ${esc(game.name)}${me ? ` · ${me.captured} tiles · ${me.cuts} cuts · #${me.rank}` : ''}`
+  el.innerHTML = `<b style="color:${f.color}">${esc(f.name)}</b> · ${esc(game.name)}${me ? ` · ${n(me.captured, 'tile')} · ${n(me.cuts, 'cut')} · #${me.rank}` : ''}`
 }
 
 function endScreen() {
