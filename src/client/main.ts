@@ -14,7 +14,28 @@ import { drawCity } from './city'
 const WORLD = 'world'
 const canvas = document.getElementById('game') as HTMLCanvasElement
 const ui = document.getElementById('ui')!
-const scene = new Scene(canvas)
+/** replaces the loading screen with an explanation, for browsers that can't run the game */
+function fatal(title: string, body: string) {
+  const boot = document.getElementById('boot')
+  const bar = boot?.querySelector<HTMLElement>('.boot-bar')
+  if (bar) bar.style.display = 'none'
+  const msg = boot?.querySelector<HTMLElement>('.boot-msg')
+  if (msg) {
+    msg.style.cssText = 'max-width:min(88vw,420px);text-align:center;color:#d4d8ee'
+    msg.innerHTML = `<b style="display:block;color:#fff;font-size:17px;margin-bottom:6px">${title}</b>${body}`
+  }
+}
+
+let scene: Scene
+try {
+  scene = new Scene(canvas)
+} catch (e) {
+  fatal(
+    'Your browser has WebGL turned off',
+    'The Network Divide draws the Earth with WebGL. In LibreWolf or Firefox with hardened settings, open <code>about:config</code>, set <code>webgl.disabled</code> to <code>false</code> and reload, or play in another browser.',
+  )
+  throw e
+}
 const input = new Input(canvas)
 input.onZoom = (f) => (scene.zoom = Math.min(2.2, Math.max(0.55, scene.zoom * f)))
 
