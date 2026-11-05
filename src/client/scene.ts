@@ -62,14 +62,18 @@ export class Scene {
   private dirtyAll = false
   private dirtyMin = Infinity
   private dirtyMax = -1
-  private playerMesh: THREE.InstancedMesh
+  /** players as round avatars facing the camera: the Farcaster pfp when there is one */
+  private sprites: THREE.Sprite[] = []
+  private avatars = new Map<string, THREE.SpriteMaterial>()
+  /** name, side and pfp FID of a player, from the server's names messages */
+  who: (id: number) => { name: string; pfp: number } | undefined = () => undefined
   private halo: THREE.Mesh
   // remote players: samples on the server's tick clock, played back by a clock that follows them smoothly
   private samples: Sample[] = []
   private playT = -1
   private lastFrame = performance.now()
   // our own player, predicted from the input and pulled toward what the server says
-  private pred = { on: false, pos: new THREE.Vector3(), head: new THREE.Vector3(), lastServer: new THREE.Vector3(), alive: false, faction: 0 }
+  private pred = { on: false, pos: new THREE.Vector3(), head: new THREE.Vector3(), lastServer: new THREE.Vector3(), alive: false, faction: 0, err: new THREE.Vector3(), headTo: new THREE.Vector3() }
   private up = new THREE.Vector3(0, 1, 0)
   private mePos = new THREE.Vector3(0, 0, 1)
   /** interpolated positions this frame, for labels */
@@ -98,15 +102,6 @@ export class Scene {
     this.scene.add(new THREE.Mesh(new THREE.SphereGeometry(1, 160, 80), this.earthMat))
     this.scene.add(atmosphere())
 
-    this.playerMesh = new THREE.InstancedMesh(
-      new THREE.OctahedronGeometry(1, 0),
-      new THREE.MeshBasicMaterial({ color: '#ffffff' }),
-      MAX_PLAYERS,
-    )
-    this.playerMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
-    this.playerMesh.count = 0
-    this.playerMesh.frustumCulled = false
-    this.scene.add(this.playerMesh)
     this.halo = new THREE.Mesh(new THREE.TorusGeometry(1, 0.1, 6, 32), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.9 }))
     this.halo.visible = false
     this.scene.add(this.halo)
@@ -439,15 +434,18 @@ export class Scene {
       else if (pr.head.lengthSq() < 1e-6) pr.head.set(0, 1, 0)
       pr.pos.copy(s)
       tangent(pr.head, pr.pos)
+      pr.err.set(0, 0, 0)
+      pr.headTo.copy(pr.head)
       pr.on = true
     } else {
       // the server moved where we predicted, give or take the round trip: pull gently toward it,
       // leading it by about one tick so the correction doesn't drag us backwards
       const moved = s.clone().sub(pr.lastServer)
+      // The correction is stored and bled in over the next frames: applied at once, 15 small jumps a
+      // second jerk the camera, which follows this player.
       const lead = s.clone().addScaledVector(moved, 1.5).normalize()
-      pr.pos.lerp(lead, 0.12).normalize()
-      if (moved.lengthSq() > 1e-10) pr.head.lerp(moved.normalize(), 0.08)
-      tangent(pr.head, pr.pos)
+      pr.err.copy(lead).sub(pr.pos).multiplyScalar(0.35)
+      if (moved.lengthSq() > 1e-10) pr.headTo.copy(moved).normalize()
     }
     pr.alive = true
     pr.lastServer.copy(s)
@@ -473,48 +471,114 @@ export class Scene {
         pr.head.applyAxisAngle(pr.pos, turn * sign)
       }
     }
+    // ease toward the server's heading only while not steering, so turns stay crisp
+    if (!want && pr.headTo.lengthSq() > 0) pr.head.lerp(pr.headTo, 1 - Math.exp(-dt * 2))
     const step = SPEED * pl.spacing * dt
-    pr.pos.addScaledVector(pr.head, Math.tan(step)).normalize()
+    pr.pos.addScaledVector(pr.head, Math.tan(step))
+    const k = 1 - Math.exp(-dt * 6)
+    pr.pos.addScaledVector(pr.err, k).normalize()
+    pr.err.multiplyScalar(1 - k)
     tangent(pr.head, pr.pos)
     this.drawn.set(this.me, { pos: pr.pos.clone(), faction: pr.faction, alive: true })
   }
 
   private drawPlayers(pl: Planet) {
-    const mesh = this.playerMesh
     let i = 0
-    const size = Math.max(0.012, pl.spacing * 0.42)
-    const spin = performance.now() / 600
-    const color = new THREE.Color()
+    const size = Math.max(0.012, pl.spacing * 0.5)
+    const pulse = Math.sin(performance.now() / 150)
     this.halo.visible = false
     for (const [id, d] of this.drawn) {
       if (!d.alive || i >= MAX_PLAYERS) continue
-      const lift = CELL_R + size * 1.6
-      this.v.copy(d.pos).multiplyScalar(lift)
-      this.q.setFromUnitVectors(this.yAxis, d.pos)
-      this.q.multiply(new THREE.Quaternion().setFromAxisAngle(this.yAxis, spin + id))
-      this.s.set(size, size * 1.5, size)
-      this.m.compose(this.v, this.q, this.s)
-      mesh.setMatrixAt(i, this.m)
-      mesh.setColorAt(i, color.copy(factionColor[d.faction - 1] ?? HOT).lerp(new THREE.Color('#ffffff'), id === this.me ? 0.45 : 0.15))
-      if (id === this.me) {
+      let sp = this.sprites[i]
+      if (!sp) {
+        sp = new THREE.Sprite()
+        sp.renderOrder = 2
+        this.sprites[i] = sp
+        this.scene.add(sp)
+      }
+      const me = id === this.me
+      sp.material = this.avatar(id, d.faction, me)
+      sp.visible = true
+      const r = size * (me ? 2.3 : 1.9)
+      sp.position.copy(d.pos).multiplyScalar(CELL_R + r * 0.55)
+      sp.scale.set(r, r, 1)
+      if (me) {
         this.halo.visible = true
         this.halo.position.copy(d.pos).multiplyScalar(CELL_R + 0.002)
         this.halo.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), d.pos)
-        const r = size * (2 + 0.2 * Math.sin(spin * 4))
-        this.halo.scale.set(r, r, r)
+        const h = size * (1.5 + 0.1 * pulse)
+        this.halo.scale.set(h, h, h)
       }
       i++
     }
-    mesh.count = i
-    mesh.instanceMatrix.needsUpdate = true
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+    for (; i < this.sprites.length; i++) this.sprites[i].visible = false
+  }
+
+  /** a round badge: the pfp (or the name's first letter) inside a ring in the side's color */
+  private avatar(id: number, faction: number, me: boolean) {
+    const info = this.who(id)
+    const name = (info?.name ?? '').replace(/^(@|bot-|anon-|fid:)/, '')
+    const letter = (name.match(/[a-z0-9]/i)?.[0] ?? '?').toUpperCase()
+    const key = `${info?.pfp ? `p${info.pfp}` : `l${letter}`}:${faction}:${me ? 1 : 0}`
+    let mat = this.avatars.get(key)
+    if (mat) return mat
+    const S = 128
+    const canvas = document.createElement('canvas')
+    canvas.width = canvas.height = S
+    const g = canvas.getContext('2d')!
+    const color = FACTIONS[faction - 1]?.color ?? '#ffffff'
+    const ring = (img?: HTMLImageElement) => {
+      g.clearRect(0, 0, S, S)
+      g.save()
+      g.beginPath()
+      g.arc(S / 2, S / 2, S / 2 - 12, 0, Math.PI * 2)
+      g.clip()
+      if (img) g.drawImage(img, 12, 12, S - 24, S - 24)
+      else {
+        g.fillStyle = '#140c22'
+        g.fillRect(0, 0, S, S)
+        g.fillStyle = color
+        g.font = '800 58px system-ui, -apple-system, Segoe UI, Roboto, sans-serif'
+        g.textAlign = 'center'
+        g.textBaseline = 'middle'
+        g.fillText(letter, S / 2, S / 2 + 3)
+      }
+      g.restore()
+      g.lineWidth = me ? 12 : 9
+      g.strokeStyle = me ? '#ffffff' : color
+      g.shadowColor = color
+      g.shadowBlur = 10
+      g.beginPath()
+      g.arc(S / 2, S / 2, S / 2 - 10, 0, Math.PI * 2)
+      g.stroke()
+    }
+    ring()
+    const tex = new THREE.CanvasTexture(canvas)
+    tex.colorSpace = THREE.SRGBColorSpace
+    mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })
+    this.avatars.set(key, mat)
+    if (info?.pfp) {
+      const img = new Image()
+      img.onload = () => {
+        ring(img)
+        tex.needsUpdate = true
+      }
+      img.src = `/pfp/${info.pfp}`
+    }
+    if (this.avatars.size > 400) {
+      const [k, old] = this.avatars.entries().next().value!
+      this.avatars.delete(k)
+      old.map?.dispose()
+      old.dispose()
+    }
+    return mat
   }
 
   /** screen position (CSS pixels) of a point on the planet, or null when it faces away */
-  project(pos: THREE.Vector3, w: number, h: number) {
+  project(pos: THREE.Vector3, w: number, h: number, lift = 1.2) {
     const camDir = this.v.copy(this.camera.position).normalize()
     if (pos.dot(camDir) < 0.2) return null
-    const p = pos.clone().multiplyScalar(CELL_R + (this.planet?.spacing ?? 0.05) * 1.2).project(this.camera)
+    const p = pos.clone().multiplyScalar(CELL_R + (this.planet?.spacing ?? 0.05) * lift).project(this.camera)
     if (p.z > 1) return null
     return { x: ((p.x + 1) / 2) * w, y: ((1 - p.y) / 2) * h }
   }

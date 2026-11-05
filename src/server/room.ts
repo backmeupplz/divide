@@ -61,6 +61,8 @@ export type Player = {
   captured: number
   cuts: number
   deaths: number
+  /** the FID whose pfp /pfp/<fid> serves for this player, 0 for none */
+  pfp: number
   /** names of players this client has been told about */
   known: Set<number>
   needsSnapshot: boolean
@@ -216,7 +218,7 @@ export class Room {
       id, name, faction, bot, client,
       x: 0, y: 0, z: 1, hx: 1, hy: 0, hz: 0, dx: 1, dy: 0, dz: 0,
       tile: 0, alive: false, respawnAt: 0, trail: [],
-      captured: 0, cuts: 0, deaths: 0,
+      captured: 0, cuts: 0, deaths: 0, pfp: 0,
       known: new Set(), needsSnapshot: true,
       brain: bot ? { phase: 'home', left: 0, turn: 1, homeTile: 0, nextThink: 0 } : null,
       cell: 0,
@@ -653,12 +655,12 @@ export class Room {
         if (near.length > VIEW_MAX * 1.5) break
       }
       if (near.length > VIEW_MAX) near = topByD(near, VIEW_MAX)
-      const fresh: [number, string, number][] = []
+      const fresh: [number, string, number, number][] = []
       for (const n of near) {
         if (me.known.has(n.v.id)) continue
         const o = this.players.get(n.v.id)!
         me.known.add(o.id)
-        fresh.push([o.id, o.name, o.faction])
+        fresh.push([o.id, o.name, o.faction, o.pfp])
       }
       if (fresh.length) c.send(JSON.stringify({ t: 'names', p: fresh } satisfies ServerMsg))
       if (me.known.size > 4 * VIEW_MAX) {

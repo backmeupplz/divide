@@ -55,7 +55,8 @@ export type ServerMsg =
       verified: boolean
     }
   | { t: 'round'; phase: 'play' | 'end'; subdiv: number; endsAt: number; now: number }
-  | { t: 'names'; p: [id: number, name: string, faction: number][] }
+  /** pfp: the FID whose picture /pfp/<fid> serves, 0 for none */
+  | { t: 'names'; p: [id: number, name: string, faction: number, pfp: number][] }
   | {
       t: 'score'
       counts: number[]

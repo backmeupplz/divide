@@ -37,6 +37,10 @@ try {
   throw e
 }
 const input = new Input(canvas)
+scene.who = (id) => {
+  const name = game.names.get(id)
+  return name === undefined ? undefined : { name: id === game.you ? game.name || name : name, pfp: game.pfps.get(id) ?? 0 }
+}
 input.onZoom = (f) => (scene.zoom = Math.min(2.2, Math.max(0.55, scene.zoom * f)))
 
 type Route = { kind: 'home' } | { kind: 'lobby'; id: string } | { kind: 'battle'; id: string }
@@ -74,6 +78,7 @@ const game = {
   top: [] as Standing[],
   me: null as Me | null,
   names: new Map<number, string>(),
+  pfps: new Map<number, number>(),
   bots: new Set<number>(),
   lastEnd: null as { battle: Battle; me: Me | null; nextAt: number } | null,
 }
@@ -339,6 +344,7 @@ function play(room: string) {
   game.net = null
   game.room = room
   game.names.clear()
+  game.pfps.clear()
   game.bots.clear()
   game.lastEnd = null
   hud()
@@ -401,7 +407,10 @@ function onMsg(m: ServerMsg) {
       }
       break
     case 'names':
-      for (const [id, name] of m.p) game.names.set(id, name)
+      for (const [id, name, , pfp] of m.p) {
+        game.names.set(id, name)
+        if (pfp) game.pfps.set(id, pfp)
+      }
       break
     case 'score':
       game.counts = m.counts
@@ -583,7 +592,8 @@ function labels(w: number, h: number) {
     .slice(0, 10)
   let i = 0
   for (const [id, d] of near) {
-    const s = scene.project(d.pos, w, h)
+    // above the avatar badge
+    const s = scene.project(d.pos, w, h, 2.4)
     if (!s) continue
     let el = labelPool[i]
     if (!el) {

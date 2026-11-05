@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { start } from '../src/server/index'
+import { privateAddress, start } from '../src/server/index'
 import { MSG_SNAPSHOT, MSG_TICK, decodeSnapshot, decodeTick, type ServerMsg } from '../src/shared/protocol'
 import { planet } from '../src/shared/planet'
 
@@ -16,7 +16,7 @@ beforeAll(() => {
   mkdirSync(dist)
   writeFileSync(join(dist, 'index.html'), '<!doctype html><html><head><title>Divide</title><!--divide-meta--></head><body></body></html>')
   writeFileSync(join(dist, 'robots.txt'), 'ok')
-  srv = start({ port: 0, publicUrl: PUBLIC, redirectHosts: 'old.example.com', dist, dataDir: join(dir, 'data'), verify: async (t) => (t === 'good' ? 1234 : null), lookupUsername: async (fid) => (fid === 1234 ? 'bob' : null) })
+  srv = start({ port: 0, publicUrl: PUBLIC, redirectHosts: 'old.example.com', dist, dataDir: join(dir, 'data'), verify: async (t) => (t === 'good' ? 1234 : null), lookupUser: async (fid) => (fid === 1234 ? { username: 'bob', pfp: 'https://img.example.com/bob.png' } : { username: null, pfp: null }), fetchPfp: async (u) => (u === 'https://img.example.com/bob.png' ? { bytes: new Uint8Array([137, 80, 78, 71]), type: 'image/png' } : null) })
   base = `http://localhost:${srv.server.port}`
 })
 
@@ -82,6 +82,11 @@ describe('http', () => {
     for (let i = 0; i < 8; i++) codes.push((await post()).status)
     expect(codes.slice(0, 6)).toEqual([200, 200, 200, 200, 200, 200])
     expect(codes.slice(6)).toEqual([429, 429])
+  })
+
+  test('the pfp proxy refuses private addresses', () => {
+    for (const ip of ['127.0.0.1', '10.1.2.3', '192.168.1.5', '172.20.0.1', '169.254.169.254', '100.80.1.2', '0.0.0.0', '::1', 'fd7a:115c::1', '::ffff:127.0.0.1']) expect(privateAddress(ip)).toBe(true)
+    for (const ip of ['8.8.8.8', '104.21.39.202', '2606:4700::6810:84e5']) expect(privateAddress(ip)).toBe(false)
   })
 
   test('the old host redirects, but keeps serving share images', async () => {
@@ -151,6 +156,12 @@ describe('websocket', () => {
     expect(wa.name).toBe('alice')
     expect(wb.verified).toBe(true)
     expect(wb.name).toBe('@bob')
+    // a verified player's pfp comes through our own origin; nobody else's does
+    expect(await until(() => b.msgs.some((m) => m.t === 'names' && m.p.some((e) => e[1] === '@bob' && e[3] === 1234)))).toBe(true)
+    const pfp = await fetch(`${base}/pfp/1234`)
+    expect(pfp.headers.get('content-type')).toBe('image/png')
+    expect([...new Uint8Array(await pfp.arrayBuffer())]).toEqual([137, 80, 78, 71])
+    expect((await fetch(`${base}/pfp/999`)).status).toBe(404)
     // a bad token plays as a guest under its nickname
     expect(wc.verified).toBe(false)
     expect(wc.name).toBe('carol')

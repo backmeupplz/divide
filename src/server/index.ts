@@ -44,29 +44,67 @@ export type Options = {
   redirectHosts?: string
   /** tests pass a store that fails */
   store?: Store
-  /** the Farcaster username for a verified FID; tests replace it */
-  lookupUsername?: (fid: number) => Promise<string | null>
+  /** the Farcaster username and pfp URL for a verified FID; tests replace it */
+  lookupUser?: (fid: number) => Promise<FcUser>
+  /** fetches a pfp for the /pfp proxy; tests replace it */
+  fetchPfp?: (url: string) => Promise<Pfp | null>
 }
+
+type FcUser = { username: string | null; pfp: string | null }
+type Pfp = { bytes: Uint8Array; type: string }
 
 const USERNAME = /^[a-z0-9][a-z0-9-]{0,15}(\.eth)?$/i
 
-/** looks the username up by FID, so a verified player can't claim someone else's name */
-function usernameLookup(api = process.env.FARCASTER_USER_API ?? 'https://api.farcaster.xyz/v2/user?fid=') {
-  const cache = new Map<number, { name: string | null; at: number }>()
-  return async (fid: number) => {
+/** looks the username and pfp up by FID, so a verified player can't claim someone else's name or face */
+function userLookup(api = process.env.FARCASTER_USER_API ?? 'https://api.farcaster.xyz/v2/user?fid=') {
+  const cache = new Map<number, FcUser & { at: number }>()
+  return async (fid: number): Promise<FcUser> => {
     const hit = cache.get(fid)
-    if (hit && Date.now() - hit.at < (hit.name ? 3600_000 : 60_000)) return hit.name
-    let name: string | null = null
+    if (hit && Date.now() - hit.at < (hit.username ? 3600_000 : 60_000)) return hit
+    const out: FcUser = { username: null, pfp: null }
     try {
       const r = await fetch(`${api}${fid}`, { signal: AbortSignal.timeout(2500) })
       if (r.ok) {
-        const u = ((await r.json()) as { result?: { user?: { fid?: number; username?: unknown } } }).result?.user
-        if (u?.fid === fid && typeof u.username === 'string' && USERNAME.test(u.username)) name = u.username
+        const u = ((await r.json()) as { result?: { user?: { fid?: number; username?: unknown; pfp?: { url?: unknown } } } }).result?.user
+        if (u?.fid === fid && typeof u.username === 'string' && USERNAME.test(u.username)) out.username = u.username
+        if (u?.fid === fid && typeof u.pfp?.url === 'string' && /^https:\/\//.test(u.pfp.url) && u.pfp.url.length < 2048) out.pfp = u.pfp.url
       }
     } catch {}
     if (cache.size > 5000) cache.delete(cache.keys().next().value!)
-    cache.set(fid, { name, at: Date.now() })
-    return name
+    cache.set(fid, { ...out, at: Date.now() })
+    return out
+  }
+}
+
+/** a private, loopback or link-local address: the pfp proxy never fetches those */
+export function privateAddress(ip: string) {
+  if (/^(::1|::|fe[89ab][0-9a-f]:|f[cd][0-9a-f]{2}:)/i.test(ip)) return true
+  const v4 = ip.replace(/^::ffff:/i, '').match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/)
+  if (!v4) return false
+  const [a, b] = [Number(v4[1]), Number(v4[2])]
+  return a === 0 || a === 10 || a === 127 || a >= 224 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127)
+}
+
+/**
+ * Fetches a pfp from the URL a Farcaster user set (anyone can set any URL): https only, public
+ * addresses only, no redirects, images only, at most 3 MB.
+ */
+async function fetchPfp(url: string): Promise<Pfp | null> {
+  try {
+    const u = new URL(url)
+    if (u.protocol !== 'https:' || (u.port && u.port !== '443')) return null
+    const { lookup } = await import('node:dns/promises')
+    const addrs = await lookup(u.hostname, { all: true })
+    if (!addrs.length || addrs.some((a) => privateAddress(a.address))) return null
+    const r = await fetch(u, { redirect: 'manual', signal: AbortSignal.timeout(5000) })
+    // raster images only: an SVG can carry script
+    const type = (r.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase()
+    if (!r.ok || !/^image\/(png|jpeg|gif|webp|avif)$/.test(type)) return null
+    if (Number(r.headers.get('content-length') ?? 0) > 3_000_000) return null
+    const bytes = new Uint8Array(await r.arrayBuffer())
+    return bytes.length <= 3_000_000 ? { bytes, type } : null
+  } catch {
+    return null
   }
 }
 
@@ -96,7 +134,11 @@ export function start(opts: Options = {}) {
       }
     })
 
-  const lookupUsername = opts.lookupUsername ?? usernameLookup()
+  const lookupUser = opts.lookupUser ?? userLookup()
+  const getPfp = opts.fetchPfp ?? fetchPfp
+  /** pfp URLs of verified players who joined, by FID: the only ones /pfp serves */
+  const pfpUrls = new Map<number, string>()
+  const pfps = new Map<number, Promise<Pfp | null>>()
   const oldHosts = new Set((opts.redirectHosts ?? process.env.REDIRECT_HOSTS ?? '').split(',').map((h) => h.trim()).filter(Boolean))
 
   const rooms = new Map<string, Room>()
@@ -266,6 +308,25 @@ export function start(opts: Options = {}) {
         }
         return json({ rooms: rooms.size, players, humans, maxTickMs: Number(tickMs.toFixed(3)) })
       }
+      if ((m = path.match(/^\/pfp\/(\d{1,10})$/))) {
+        const fid = Number(m[1])
+        const url = pfpUrls.get(fid)
+        if (!url) return new Response('not found', { status: 404 })
+        let p = pfps.get(fid)
+        if (!p) {
+          p = getPfp(url)
+          pfps.set(fid, p)
+          if (pfps.size > 500) pfps.delete(pfps.keys().next().value!)
+        }
+        const img = await p
+        if (!img) {
+          pfps.delete(fid)
+          return new Response('not found', { status: 404 })
+        }
+        return new Response(img.bytes as unknown as BodyInit, {
+          headers: { 'content-type': img.type, 'cache-control': 'public, max-age=3600', 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'none'; sandbox" },
+        })
+      }
       if (path === '/og/default.png') return png('default', 3600, defaultSvg)
       if (path === '/og/hero.png') return png('hero', 3600, heroSvg, { fallback: false })
       if (path === '/icon.png') return png('icon', 86400, iconSvg, { opaque: true, fallback: false })
@@ -329,13 +390,21 @@ export function start(opts: Options = {}) {
           c.joining = true
           let name = ''
           let verified = false
+          let pfpFid = 0
           if (typeof msg.token === 'string' && msg.token.length < 4096) {
             const fid = await verify(msg.token)
             if (fid) {
               verified = true
               // the name comes from the FID, never from what the client says it is
-              const u = plain((await lookupUsername(fid)) ?? '', 20)
+              const user = await lookupUser(fid)
+              const u = plain(user.username ?? '', 20)
               name = u ? `@${u}` : `fid:${fid}`
+              if (user.pfp) {
+                if (pfpUrls.get(fid) !== user.pfp) pfps.delete(fid)
+                pfpUrls.set(fid, user.pfp)
+                if (pfpUrls.size > 5000) pfpUrls.delete(pfpUrls.keys().next().value!)
+                pfpFid = fid
+              }
             }
           }
           if (!name) {
@@ -358,6 +427,7 @@ export function start(opts: Options = {}) {
             send: (d) => void ws.send(d),
             buffered: () => ws.getBufferedAmount(),
           })
+          c.player.pfp = pfpFid
           room.fillBots()
           ws.send(JSON.stringify({ t: 'welcome', you: c.player.id, faction: c.player.faction, room: room.id, name, verified } satisfies ServerMsg))
           ws.send(JSON.stringify({ t: 'round', phase: room.phase, subdiv: room.planet.subdiv, endsAt: room.endsAt, now: Date.now() } satisfies ServerMsg))

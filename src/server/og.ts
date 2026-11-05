@@ -2,10 +2,11 @@
 // rendered with resvg.
 
 import { Resvg } from '@resvg/resvg-js'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { deflateSync } from 'node:zlib'
-import { FACTIONS, MENU_CYAN, NEUTRAL_COLOR, NS, QUIL, SKY_BOTTOM, SKY_TOP, faction, emblem } from '../shared/factions'
-import { FONT, cityScene, rain, wordmark } from '../shared/keyart'
+import { FACTIONS, MENU_CYAN, NS, QUIL, SKY_BOTTOM, SKY_TOP, faction, emblem } from '../shared/factions'
+import { FONT, rain, skyline, wordmark, wordmarkHeight } from '../shared/keyart'
 import type { Battle } from '../shared/protocol'
 
 const FONTS = [join(import.meta.dir, 'fonts/Inter-Bold.ttf'), join(import.meta.dir, 'fonts/Inter-Regular.ttf')]
@@ -76,138 +77,157 @@ export const plain = (s: string, max = 24) => {
   return t.length > max ? `${t.slice(0, max - 1)}…` : t
 }
 
-/** a hex-tile disc split into faction territories, like the planet in the game */
-/** x of the i-th faction badge, centred on the card */
-const slot = (i: number) => 600 + (i - (FACTIONS.length - 1) / 2) * 160
+/** the Earth at night (rendered once from the game's own maps and shader), as a data URI for resvg */
+const EARTH = `data:image/png;base64,${readFileSync(join(import.meta.dir, 'assets/earth.png')).toString('base64')}`
+/** the sphere's radius as a share of half the image */
+const EARTH_FILL = 0.915
 
-function planetArt(cx: number, cy: number, r: number, shares: number[], seed = 1) {
-  const total = Math.max(1, shares.reduce((a, b) => a + b, 0))
-  const fills: { color: string; end: number }[] = []
-  let acc = 0
-  shares.forEach((s, i) => {
-    acc += s / total
-    fills.push({ color: FACTIONS[i]?.color ?? NEUTRAL_COLOR, end: acc })
-  })
-  const size = r / 9
+/** hexagon outlines, like the game's territory cells */
+function hexPattern(id: string, color: string, size: number) {
   const w = Math.sqrt(3) * size
-  const out: string[] = []
-  const sectorAt = (x: number, y: number) => {
-    const a = (Math.atan2(y - cy, x - cx) / (2 * Math.PI) + 1 + seed * 0.13) % 1
-    return fills.findIndex((f) => a <= f.end + 1e-9)
-  }
-  for (let row = -12; row <= 12; row++) {
-    for (let col = -12; col <= 12; col++) {
-      const x = cx + col * w + (row % 2 ? w / 2 : 0)
-      const y = cy + row * size * 1.5
-      const d = Math.hypot(x - cx, y - cy)
-      if (d > r - size * 0.4) continue
-      const sector = sectorAt(x, y)
-      const color = sector < 0 ? NEUTRAL_COLOR : fills[sector].color
-      // tiles next to a border shrink, opening glowing cracks between the territories
-      let border = false
-      for (let k = 0; k < 6 && !border; k++) {
-        const a = (Math.PI / 3) * k
-        if (sectorAt(x + Math.cos(a) * w, y + Math.sin(a) * w) !== sector) border = true
-      }
-      // tiles shrink toward the rim so the disc reads as a sphere
-      const s = size * (border ? 0.72 : 0.94) * (0.55 + 0.45 * Math.sqrt(Math.max(0, 1 - (d / r) ** 2)))
-      const pts = []
-      for (let k = 0; k < 6; k++) {
-        const a = (Math.PI / 3) * k + Math.PI / 6
-        pts.push(`${(x + Math.cos(a) * s).toFixed(1)},${(y + Math.sin(a) * s).toFixed(1)}`)
-      }
-      out.push(`<polygon points="${pts.join(' ')}" fill="${color}"/>`)
+  const h = size * 3
+  const hex = (x: number, y: number) => {
+    const pts = []
+    for (let k = 0; k < 6; k++) {
+      const a = (Math.PI / 3) * k + Math.PI / 6
+      pts.push(`${(x + Math.cos(a) * size * 0.92).toFixed(1)},${(y + Math.sin(a) * size * 0.92).toFixed(1)}`)
     }
+    return `<polygon points="${pts.join(' ')}" fill="${color}" fill-opacity="0.2" stroke="${color}" stroke-width="2" stroke-opacity="0.75"/>`
   }
+  return `<pattern id="${id}" width="${w.toFixed(2)}" height="${h.toFixed(2)}" patternUnits="userSpaceOnUse">${hex(0, 0)}${hex(w, 0)}${hex(w / 2, h / 2)}${hex(0, h)}${hex(w, h)}</pattern>`
+}
+
+/**
+ * The Earth divided: Network School's territory from the left, Quilibrium's from the right, meeting at
+ * a glowing, ragged front line placed by their shares.
+ */
+function earthArt(cx: number, cy: number, r: number, shares: number[], id: string) {
+  const total = shares[0] + shares[1]
+  const left = total > 0 ? shares[0] / total : 0.5
+  // the front line: a wobbly curve from top to bottom
+  const pts: string[] = []
+  for (let k = 0; k <= 24; k++) {
+    const t = k / 24
+    const y = cy - r * 1.05 + t * r * 2.1
+    const x = cx - r + 2 * r * left + Math.sin(t * 9.3 + 1.2) * r * 0.06 + Math.sin(t * 3.1) * r * 0.09
+    pts.push(`${x.toFixed(1)},${y.toFixed(1)}`)
+  }
+  const line = pts.join(' L')
+  const top = cy - r * 1.1, bottom = cy + r * 1.1
+  const ns = FACTIONS[NS - 1], q = FACTIONS[QUIL - 1]
+  const size = r / EARTH_FILL
   return `
-    <defs>
-      <radialGradient id="core" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#fff1b0"/><stop offset="55%" stop-color="#ff7a1a"/><stop offset="100%" stop-color="#3a0f1a"/></radialGradient>
-      <radialGradient id="shade" cx="38%" cy="32%" r="75%"><stop offset="0%" stop-color="#ffffff" stop-opacity="0.16"/><stop offset="60%" stop-color="#000000" stop-opacity="0"/><stop offset="100%" stop-color="#000000" stop-opacity="0.6"/></radialGradient>
-      <radialGradient id="halo" cx="50%" cy="50%" r="50%"><stop offset="70%" stop-color="#9b5cff" stop-opacity="0.35"/><stop offset="100%" stop-color="#9b5cff" stop-opacity="0"/></radialGradient>
-    </defs>
-    <circle cx="${cx}" cy="${cy}" r="${r * 1.18}" fill="url(#halo)"/>
-    <circle cx="${cx}" cy="${cy}" r="${r}" fill="url(#core)"/>
-    ${out.join('')}
-    <circle cx="${cx}" cy="${cy}" r="${r}" fill="url(#shade)"/>`
+  <defs>
+    <clipPath id="${id}c"><circle cx="${cx}" cy="${cy}" r="${r}"/></clipPath>
+    ${hexPattern(`${id}n`, ns.color, r / 11)}
+    ${hexPattern(`${id}q`, q.color, r / 11)}
+    <radialGradient id="${id}h" cx="50%" cy="50%" r="50%"><stop offset="0.82" stop-color="#8f5bff" stop-opacity="0.55"/><stop offset="1" stop-color="#8f5bff" stop-opacity="0"/></radialGradient>
+    <radialGradient id="${id}s" cx="36%" cy="30%" r="80%"><stop offset="0" stop-color="#ffffff" stop-opacity="0.08"/><stop offset="0.6" stop-color="#000000" stop-opacity="0"/><stop offset="1" stop-color="#000000" stop-opacity="0.55"/></radialGradient>
+    <filter id="${id}g" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="7"/></filter>
+  </defs>
+  <circle cx="${cx}" cy="${cy}" r="${r * 1.12}" fill="url(#${id}h)"/>
+  <image href="${EARTH}" x="${cx - size}" y="${cy - size}" width="${size * 2}" height="${size * 2}"/>
+  <g clip-path="url(#${id}c)">
+    <path d="M${cx - r * 1.1},${top} L${line} L${cx - r * 1.1},${bottom} Z" fill="url(#${id}n)"/>
+    <path d="M${cx + r * 1.1},${top} L${line} L${cx + r * 1.1},${bottom} Z" fill="url(#${id}q)"/>
+    <path d="M${line}" fill="none" stroke="#ff8a2a" stroke-width="16" stroke-opacity="0.75" filter="url(#${id}g)"/>
+    <path d="M${line}" fill="none" stroke="#ffd27a" stroke-width="4"/>
+    <circle cx="${cx}" cy="${cy}" r="${r}" fill="url(#${id}s)"/>
+  </g>`
 }
 
 const W = 1200
 const H = 800
 
-/** the rainy street with both sides, dimmed in the middle where the text goes */
-const frame = (body: string, dim = 0.55, h = H) =>
+/** night sky over a distant skyline, with rain */
+const frame = (body: string, h = H) =>
   `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${h}" viewBox="0 0 ${W} ${h}">
   <rect width="${W}" height="${h}" fill="${BG}"/>
-  ${cityScene(W, h, (0.82 * h) / H)}
-  <defs><radialGradient id="scrim" cx="50%" cy="55%" r="55%"><stop offset="0" stop-color="#07060d" stop-opacity="${dim}"/><stop offset="1" stop-color="#07060d" stop-opacity="0"/></radialGradient></defs>
-  <rect width="${W}" height="${h}" fill="url(#scrim)"/>
+  ${skyline(W, h, h * 0.86, 'og')}
+  ${rain(W, h, 120, 7)}
   ${body}</svg>`
 
-/** a dark glass panel with a cyan rim, like the menu's */
-const panel = (x: number, y: number, w: number, h: number) =>
-  `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="22" fill="#0a0b16" fill-opacity="0.84" stroke="${MENU_CYAN}" stroke-opacity="0.55" stroke-width="2"/>`
-
-function bars(x: number, y: number, width: number, values: number[], total: number, label: (i: number, pct: number) => string) {
+/** both sides' rows: emblem, name, value, and a bar */
+function bars(x: number, y: number, width: number, values: number[], total: number, label: (i: number, pct: number) => string, gap = 78) {
   return values
     .map((v, i) => {
       const f = FACTIONS[i]
       const pct = total ? (v / total) * 100 : 0
-      // the rows share the space four rows used to fill
-      const yy = y + i * Math.min(110, 264 / values.length)
+      const yy = y + i * gap
       return `
-      <g transform="translate(${x + 18} ${yy - 10}) scale(0.26)">${emblem(f.id, FONT)}</g>
-      <text x="${x + 44}" y="${yy}" font-family="Inter" font-weight="700" font-size="27" fill="#ffffff">${esc(f.name)}</text>
-      <text x="${x + width}" y="${yy}" font-family="Inter" font-weight="700" font-size="27" fill="${f.color}" text-anchor="end">${esc(label(i, pct))}</text>
-      <rect x="${x + 44}" y="${yy + 12}" width="${width - 44}" height="14" rx="7" fill="#1d1b2e"/>
-      <rect x="${x + 44}" y="${yy + 12}" width="${Math.max(14, ((width - 44) * pct) / 100).toFixed(0)}" height="14" rx="7" fill="${f.color}"/>`
+      <g transform="translate(${x + 18} ${yy - 10}) scale(0.3)">${emblem(f.id, FONT)}</g>
+      <text x="${x + 48}" y="${yy}" font-family="Inter" font-weight="700" font-size="30" fill="#ffffff">${esc(f.name)}</text>
+      <text x="${x + width}" y="${yy}" font-family="Inter" font-weight="700" font-size="30" fill="${f.color}" text-anchor="end">${esc(label(i, pct))}</text>
+      <rect x="${x + 48}" y="${yy + 14}" width="${width - 48}" height="16" rx="8" fill="#ffffff" fill-opacity="0.1"/>
+      <rect x="${x + 48}" y="${yy + 14}" width="${Math.max(16, ((width - 48) * pct) / 100).toFixed(0)}" height="16" rx="8" fill="${f.color}"/>`
     })
     .join('')
 }
 
-const cyan = (x: number, y: number, size: number, text: string) =>
-  `<text x="${x}" y="${y}" font-family="Inter" font-weight="700" font-size="${size}" text-anchor="middle" fill="#04161c" stroke="#04161c" stroke-width="5" stroke-linejoin="round">${text}</text><text x="${x}" y="${y}" font-family="Inter" font-weight="700" font-size="${size}" text-anchor="middle" fill="${MENU_CYAN}">${text}</text>`
+const cyan = (x: number, y: number, size: number, text: string, anchor = 'middle') =>
+  `<text x="${x}" y="${y}" font-family="Inter" font-weight="700" font-size="${size}" text-anchor="${anchor}" fill="#04161c" stroke="#04161c" stroke-width="5" stroke-linejoin="round">${text}</text><text x="${x}" y="${y}" font-family="Inter" font-weight="700" font-size="${size}" text-anchor="${anchor}" fill="${MENU_CYAN}">${text}</text>`
+
+const eyebrow = (x: number, y: number, text: string) =>
+  `<text x="${x}" y="${y}" font-family="Inter" font-weight="700" font-size="20" letter-spacing="5" fill="${MENU_CYAN}">${text}</text>`
+
+/** the right-hand column starts here; everything important stays between y 110 and 690, so a 1.91:1 crop keeps it */
+const COL = 660
+const COL_W = 480
 
 export function battleSvg(b: Battle) {
   const w = faction(b.winner)!
-  const total = b.tiles
   const mvp = b.top[0]
+  const claimed = b.counts.reduce((a, c) => a + c, 0) || 1
+  const name = w.name.length > 12 ? 50 : 60
   return frame(`
-    ${wordmark(600, 22, 54)}
-    ${panel(330, 222, 540, 520)}
-    <g transform="translate(386 282) scale(0.42)">${emblem(w.id, FONT)}</g>
-    <text x="424" y="298" font-family="Inter" font-weight="700" font-size="44" fill="${w.color}">${esc(w.name)} won</text>
-    ${bars(362, 400, 476, b.counts, total, (_i, pct) => `${pct.toFixed(1)}%`)}
-    <text x="600" y="660" font-family="Inter" font-size="24" fill="#b9bfdc" text-anchor="middle">${b.players} players${mvp ? ` · MVP ${esc(plain(mvp.name))} (${mvp.captured} tiles)` : ''}</text>
-    ${cyan(600, 712, 30, 'Pick a side for the next round')}`)
+    ${earthArt(330, 400, 270, b.counts, 'e')}
+    ${eyebrow(COL, 150, 'BATTLE RESULT')}
+    <g transform="translate(${COL + 30} ${222}) scale(0.5)">${emblem(w.id, FONT)}</g>
+    <text x="${COL + 72}" y="${240}" font-family="Inter" font-weight="700" font-size="${name}" fill="${w.color}">${esc(w.name)}</text>
+    <text x="${COL}" y="${300}" font-family="Inter" font-weight="700" font-size="44" fill="#ffffff">won the Earth</text>
+    ${bars(COL, 386, COL_W, b.counts, claimed, (_i, pct) => `${pct.toFixed(1)}%`)}
+    <text x="${COL}" y="${578}" font-family="Inter" font-size="24" fill="#c9cde6">${b.players} players${mvp ? ` · MVP ${esc(plain(mvp.name))} (${mvp.captured} tiles)` : ''}</text>
+    ${cyan(COL, 650, 34, 'Pick a side for the next round', 'start')}`)
 }
 
 export function lobbySvg(id: string, sizes: number[] | null) {
   const players = sizes ? sizes.reduce((a, b) => a + b, 0) : 0
   return frame(`
-    ${wordmark(600, 22, 54)}
-    ${panel(330, 222, 540, 520)}
-    <text x="600" y="300" font-family="Inter" font-weight="700" font-size="54" fill="#ffffff" text-anchor="middle">Join my lobby</text>
-    <text x="600" y="346" font-family="Inter" font-size="26" fill="#b9bfdc" text-anchor="middle">Lobby ${esc(id)}${sizes ? ` · ${players} in the war now` : ''}</text>
+    ${earthArt(330, 400, 270, sizes && players ? sizes : [1, 1], 'e')}
+    ${eyebrow(COL, 150, 'PRIVATE LOBBY')}
+    <text x="${COL}" y="${236}" font-family="Inter" font-weight="700" font-size="62" fill="#ffffff">Join my lobby</text>
+    <text x="${COL}" y="${292}" font-family="Inter" font-weight="700" font-size="34" letter-spacing="8" fill="#ffd27a">${esc(id.toUpperCase())}</text>
     ${
       sizes && players
-        ? bars(362, 412, 476, sizes, players, (i) => `${sizes[i]} ${sizes[i] === 1 ? 'player' : 'players'}`)
-        : `${FACTIONS.map((f, i) => `<g transform="translate(${slot(i)} 470) scale(0.62)">${emblem(f.id, FONT)}</g><text x="${slot(i)}" y="538" font-family="Inter" font-weight="700" font-size="19" fill="${f.color}" text-anchor="middle">${f.name.split(' ').map((w, k) => `<tspan x="${slot(i)}" dy="${k ? 22 : 0}">${esc(w)}</tspan>`).join('')}</text>`).join('')}
-    <text x="600" y="606" font-family="Inter" font-size="26" fill="#d4d8ee" text-anchor="middle">Two sides, one network, no player cap.</text>`
+        ? bars(COL, 380, COL_W, sizes, players, (i) => `${sizes[i]} ${sizes[i] === 1 ? 'player' : 'players'}`)
+        : `<text x="${COL}" y="${400}" font-family="Inter" font-size="28" fill="#d4d8ee">Network School vs Quilibrium.</text>
+           <text x="${COL}" y="${442}" font-family="Inter" font-size="28" fill="#d4d8ee">One Earth, no player cap.</text>`
     }
-    ${cyan(600, 712, 32, 'Tap to pick a side')}`)
+    ${cyan(COL, 650, 36, 'Tap to pick a side', 'start')}`)
+}
+
+/** the title and the two sides, over the divided Earth */
+function brand(cx: number, top: number, size: number) {
+  const y = top + wordmarkHeight(size) + 56
+  // emblem + name, centred on cx (Inter Bold runs about 0.6 em per character)
+  const side = (id: number, yy: number) => {
+    const f = FACTIONS[id - 1]
+    const w = 34 + f.name.length * 30 * 0.6
+    const x = cx - w / 2
+    return `<g transform="translate(${x + 14} ${yy - 10}) scale(0.34)">${emblem(id, FONT)}</g>
+    <text x="${x + 40}" y="${yy}" font-family="Inter" font-weight="700" font-size="30" fill="${f.color}">${esc(f.name)}</text>`
+  }
+  return `${wordmark(cx, top, size)}
+    ${side(NS, y)}
+    <text x="${cx}" y="${y + 50}" font-family="Inter" font-weight="700" font-size="20" letter-spacing="4" fill="#ffffff" fill-opacity="0.7" text-anchor="middle">VS</text>
+    ${side(QUIL, y + 100)}`
 }
 
 export function defaultSvg() {
-  return frame(
-    `
-    ${planetArt(600, 470, 150, [4, 4, 2], 3)}
-    <defs><linearGradient id="band" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#07060d" stop-opacity="0"/><stop offset="0.45" stop-color="#07060d" stop-opacity="0.8"/><stop offset="1" stop-color="#07060d" stop-opacity="0.9"/></linearGradient></defs>
-    <rect y="620" width="1200" height="180" fill="url(#band)"/>
-    ${wordmark(600, 30, 66)}
-    ${cyan(600, 700, 34, 'Pick a side. Claim the network.')}
-    <text x="600" y="748" font-family="Inter" font-size="24" fill="#d4d8ee" text-anchor="middle">Network School vs Quilibrium</text>`,
-    0.25,
-  )
+  return frame(`
+    ${earthArt(330, 400, 270, [1, 1], 'e')}
+    ${brand(900, 110, 60)}
+    ${cyan(900, 650, 34, 'Pick a side. Divide the Earth.')}`)
 }
 
 /** the 1.91:1 hero and Open Graph image the mini app manifest asks for */
@@ -215,12 +235,9 @@ export const HERO_H = 630
 export function heroSvg() {
   return frame(
     `
-    ${planetArt(600, 380, 120, [4, 4, 2], 3)}
-    ${wordmark(600, 22, 52)}
-    <defs><linearGradient id="band" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#07060d" stop-opacity="0"/><stop offset="0.45" stop-color="#07060d" stop-opacity="0.8"/><stop offset="1" stop-color="#07060d" stop-opacity="0.9"/></linearGradient></defs>
-    <rect y="500" width="1200" height="130" fill="url(#band)"/>
-    ${cyan(600, 576, 32, 'Pick a side. Claim the network.')}`,
-    0.25,
+    ${earthArt(310, 315, 240, [1, 1], 'e')}
+    ${brand(880, 40, 50)}
+    ${cyan(880, 560, 32, 'Pick a side. Divide the Earth.')}`,
     HERO_H,
   )
 }
@@ -230,8 +247,8 @@ export function iconSvg() {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 ${s} ${s}">
   <defs><linearGradient id="isky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${SKY_TOP}"/><stop offset="1" stop-color="${SKY_BOTTOM}"/></linearGradient></defs>
   <rect width="${s}" height="${s}" fill="url(#isky)"/>
-  ${planetArt(512, 540, 330, [1, 1], 0)}
-  <g transform="translate(250 230) scale(1.6)">${emblem(QUIL, FONT)}</g>
-  <g transform="translate(774 230) scale(1.6)">${emblem(NS, FONT)}</g>
+  ${earthArt(512, 560, 330, [1, 1], 'i')}
+  <g transform="translate(250 230) scale(1.6)">${emblem(NS, FONT)}</g>
+  <g transform="translate(774 230) scale(1.6)">${emblem(QUIL, FONT)}</g>
   ${rain(s, s, 90, 5)}</svg>`
 }
