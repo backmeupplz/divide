@@ -282,11 +282,26 @@ export class Room {
     const pl = this.planet
     let tile = -1
     if (this.counts[p.faction - 1] > 0) {
-      for (let tries = 0; tries < 300 && tile < 0; tries++) {
-        const t = Math.floor(this.rnd() * pl.count)
-        if (this.owner[t] === p.faction && this.trail[t] === 0) tile = t
+      // a random tile of our side's ground, preferring the interior over the front line
+      const f = p.faction
+      const free = (t: number) => this.owner[t] === f && this.trail[t] === 0
+      const inner = (t: number) => {
+        if (!free(t)) return false
+        for (let k = pl.nbrStart[t]; k < pl.nbrStart[t + 1]; k++) if (this.owner[pl.nbr[k]] !== f) return false
+        return true
       }
-      if (tile < 0) for (let t = 0; t < pl.count && tile < 0; t++) if (this.owner[t] === p.faction) tile = t
+      // quick guesses first: cheap while the side holds a fair share of the planet
+      for (let tries = 0; tries < 64 && tile < 0; tries++) {
+        const t = Math.floor(this.rnd() * pl.count)
+        if (inner(t)) tile = t
+      }
+      if (tile < 0) {
+        // a small or ragged territory: pick uniformly from all of it
+        const inside: number[] = [], edge: number[] = []
+        for (let t = 0; t < pl.count; t++) if (free(t)) (inner(t) ? inside : edge).push(t)
+        const pool = inside.length ? inside : edge
+        if (pool.length) tile = pool[Math.floor(this.rnd() * pool.length)]
+      }
     }
     if (tile < 0) {
       // the faction lost everything: drop it a small foothold somewhere

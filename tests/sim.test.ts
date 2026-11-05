@@ -89,6 +89,27 @@ function ringOnly(room: Room, c: number, radius: number) {
   return room.ring(c, radius).filter((t) => !inner.has(t))
 }
 
+describe('spawning', () => {
+  test('players spawn at random inside their side, away from the front, even when it is tiny', () => {
+    const { room, r } = emptyRoom()
+    // two small patches on opposite sides of the planet: about 0.5% of it
+    const far = nearest(room.planet, -room.planet.pos[0], -room.planet.pos[1], -room.planet.pos[2])
+    const patches = [room.ring(0, 2), room.ring(far, 2)]
+    for (const t of patches.flat()) r.setOwner(t, 1)
+    const inner = new Set([...room.ring(0, 1), ...room.ring(far, 1)])
+    const seen = new Set<number>()
+    for (let i = 0; i < 300; i++) {
+      const p = room.addPlayer(`p${i}`, 1, null)
+      expect(inner.has(p.tile)).toBe(true)
+      seen.add(p.tile)
+      room.removePlayer(p.id)
+    }
+    // spread over both patches, not piled on one tile
+    expect(seen.size).toBeGreaterThan(10)
+    expect(patches.every((ring) => ring.some((t) => seen.has(t)))).toBe(true)
+  })
+})
+
 describe('capture', () => {
   test('closing a loop captures the inside, not the outside', () => {
     const { room, r } = emptyRoom()
