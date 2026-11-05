@@ -2,6 +2,10 @@
 // (little-endian), everything else JSON.
 
 export const TICK_HZ = 15
+/** tiles per second; the client predicts its own player with the same rules */
+export const SPEED = 5
+/** radians per second */
+export const TURN_RATE = 5.5
 export const MSG_TICK = 1
 export const MSG_SNAPSHOT = 2
 

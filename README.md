@@ -1,12 +1,12 @@
 # The Network Divide
 
-**The Network Divide** is a live multiplayer territory war about the Farcaster split. Pick a side, Quilibrium's resistance or the Network School occupation, and fight over a small hex planet hanging over a rainy, neon-lit street, in your browser or as a Farcaster mini app.
+**The Network Divide** is a live multiplayer territory war about the Farcaster split. Pick a side, Quilibrium's resistance or the Network School occupation, and divide the Earth between you, under a rainy, neon-lit sky, in your browser or as a Farcaster mini app.
 
-Play at **https://divide.borodutch.com**.
+Play at **https://divide.quilcast.com**.
 
 ## How it plays
 
-Each player is a glowing node on a planet made of hex tiles. While you are inside your faction's territory you are safe. When you leave it, you draw a trail behind you, and when you get back home the trail and everything it fenced off becomes your faction's land, including enemy tiles caught inside. An enemy who crosses your trail cuts it and sends you back to respawn, so long trips are greedy and risky.
+Each player is a glowing node on the Earth, which is split into hex tiles. While you are inside your faction's territory you are safe. When you leave it, you draw a trail behind you, and when you get back home the trail and everything it fenced off becomes your faction's land, including enemy tiles caught inside. An enemy who crosses your trail cuts it and sends you back to respawn, so long trips are greedy and risky.
 
 Rounds last four minutes. As the clock runs down, the planet cracks open along the borders between factions, and when time is up the side holding more of the planet wins. The round ends with a result card you can cast, and the next round starts twelve seconds later.
 
@@ -25,7 +25,7 @@ Rounds last four minutes. As the clock runs down, the planet cracks open along t
 
 ## The look
 
-The art direction is a rainy street at dusk: the resistance's worn apartment block, Q flag, barricades and burning barrel on one side, and Network School's glass HQ with searchlights, banners, a surveillance screen and a checkpoint on the other. The title is "The Network Divide" in an orange gradient with a pink "The", and the menu uses glowing cyan text. In the game the tiles are wet asphalt catching pink and violet neon, the far side of the planet fades into haze, rain falls over everything, and the cracks between territories glow hotter as the round runs down.
+The art direction is a rainy street at dusk: the resistance's worn apartment block, Q flag, barricades and burning barrel on one side, and Network School's glass HQ with searchlights, banners, a surveillance screen and a checkpoint on the other. The title is "The Network Divide" in an orange gradient with a pink "The". The menu is a glass panel with the two sides facing off (VS), a big button in your side's color, and the Earth turning above the street. In the game the Earth sits in night colors with its city lights on, each side's territory is a see-through layer of glowing hex cells over it, rain falls over everything, and the front lines crack open and glow hotter as the round runs down. A loading screen covers the first second while the Earth maps arrive.
 
 All of it is plain SVG in `src/shared/keyart.ts` and `src/shared/factions.ts` (the emblems), so the menu draws it in the browser and the share images draw the same scene on the server.
 
@@ -38,7 +38,9 @@ The server owns the whole simulation. Clients only send the direction they want 
 - **Area of interest.** Players are bucketed into 642 coarse cells. Each client searches the cells around it ring by ring and is sent at most the 96 nearest players, so a crowded match costs roughly the same per player as a quiet one.
 - **Chunked tile updates.** Tile changes are grouped by the same cells. Each client keeps a version per cell and is sent only the changes in the cells around it; a cell that comes back into view after missing changes is resent whole (`src/server/chunks.ts`). Small planets, which a player sees all of, just get every change.
 - **Wire format.** Per-tick state is binary: 3 bytes per tile change and 12 bytes per player (`src/shared/protocol.ts`). Clients draw players about 110 ms behind the newest state and interpolate between ticks.
-- **Rendering.** three.js with one instanced mesh for all tiles and one for all players, partial buffer uploads for changed tiles, low-poly geometry and the pixel ratio capped at 1.75.
+- **Rendering.** three.js. The Earth is one textured sphere (NASA's Blue Marble pushed into night colors, with the Earth at Night city lights on top). The territory is a single mesh of flat, see-through cells, one per tile, whose colors and gaps change in place with one buffer upload per frame. Players are one instanced mesh. The pixel ratio adapts: it drops when frames run slower than about 40 fps and climbs back when there's headroom.
+- **Smooth motion.** The server runs a fixed-step clock, so ticks come out at exactly 15 per second on average. Other players are played back about 120 ms behind the newest tick by a clock that runs at real speed and leans toward that target. Your own player is predicted locally with the server's movement rules, so steering answers on the next frame, and is pulled gently toward each server update.
+- **Sound.** The music streams on the first tap (browsers block sound before one) and the effects are synthesized with Web Audio, so there are no effect files at all. The sound button in the menu mutes both.
 
 ### Load
 
@@ -57,7 +59,7 @@ One match runs in one process, so a single match tops out at a few thousand play
 ## Farcaster mini app
 
 - The client calls `sdk.actions.ready()` and turns off native swipe gestures so dragging steers instead of closing the app.
-- Inside a Farcaster client the player signs in with Quick Auth. The server verifies the token for `divide.borodutch.com` and looks the username up by the verified FID (never trusting a name the client sends), falling back to `fid:N`; a token that fails verification plays as a guest. On the plain web everyone plays as a guest with an optional nickname.
+- Inside a Farcaster client the player signs in with Quick Auth. The server verifies the token for `divide.quilcast.com` and looks the username up by the verified FID (never trusting a name the client sends), falling back to `fid:N`; a token that fails verification plays as a guest. On the plain web everyone plays as a guest with an optional nickname.
 - Results and invites use `composeCast`. Outside a Farcaster client they open the Farcaster web composer.
 - `/`, `/lobby/<id>` and `/battle/<id>` carry `fc:miniapp` (and `fc:frame`) embed tags and Open Graph tags. Their images are 1200×800 PNGs drawn on the server (`/og/default.png`, `/og/lobby/<id>.png`, `/og/battle/<id>.png`), along with the 1200×630 `/og/hero.png` for the manifest, the alpha-free 1024 px `/icon.png` and `/splash.png`. They render in a worker thread so they never stall a match, made-up lobby ids get the default image, and when too many renders are queued the default image is served instead.
 - The manifest is served at `/.well-known/farcaster.json`. To verify domain ownership, sign the domain in a Farcaster client's developer tools and set `FARCASTER_HEADER`, `FARCASTER_PAYLOAD` and `FARCASTER_SIGNATURE` on the server; the manifest then includes the `accountAssociation`.
@@ -78,7 +80,8 @@ For client work, `bun start` in one terminal and `bun run dev:client` in another
 | Variable | Default | |
 | --- | --- | --- |
 | `PORT` | `3000` | HTTP and WebSocket port |
-| `PUBLIC_URL` | `https://divide.borodutch.com` | used in embeds, the manifest and Quick Auth's domain check |
+| `PUBLIC_URL` | `https://divide.quilcast.com` | used in embeds, the manifest and Quick Auth's domain check |
+| `REDIRECT_HOSTS` | (none) | comma-separated old hosts (production: `divide.borodutch.com`) that 301 to `PUBLIC_URL`, except `/og/*` share images, `/ws` and `/health` |
 | `DATA_DIR` | `./data` | where the SQLite file with battle results lives |
 | `FARCASTER_HEADER`, `FARCASTER_PAYLOAD`, `FARCASTER_SIGNATURE` | unset | the manifest's account association |
 | `FARCASTER_USER_API` | `https://api.farcaster.xyz/v2/user?fid=` | where verified players' usernames are looked up (the FID is appended) |
@@ -100,6 +103,11 @@ scripts/      load test, benchmark, share-image preview
 The production image is the `Dockerfile`, which builds the client and runs the typecheck and tests before the runtime stage. It runs on Tugport, which rebuilds on every push to `main`; battle results live on a volume at `/data`.
 
 The code lives at https://git.borodutch.com/backmeupplz/divide and is mirrored to https://github.com/backmeupplz/divide.
+
+## Credits
+
+- Music: ["Mist City" by Section7](https://opengameart.org/content/mist-city), OpenGameArt.org, licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Trimmed for looping.
+- Earth imagery: NASA Blue Marble ("Land shallow topo") and NASA Earth at Night, public domain, via Wikimedia Commons.
 
 ## License
 

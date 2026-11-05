@@ -16,7 +16,7 @@ beforeAll(() => {
   mkdirSync(dist)
   writeFileSync(join(dist, 'index.html'), '<!doctype html><html><head><title>Divide</title><!--divide-meta--></head><body></body></html>')
   writeFileSync(join(dist, 'robots.txt'), 'ok')
-  srv = start({ port: 0, publicUrl: PUBLIC, dist, dataDir: join(dir, 'data'), verify: async (t) => (t === 'good' ? 1234 : null), lookupUsername: async (fid) => (fid === 1234 ? 'bob' : null) })
+  srv = start({ port: 0, publicUrl: PUBLIC, redirectHosts: 'old.example.com', dist, dataDir: join(dir, 'data'), verify: async (t) => (t === 'good' ? 1234 : null), lookupUsername: async (fid) => (fid === 1234 ? 'bob' : null) })
   base = `http://localhost:${srv.server.port}`
 })
 
@@ -82,6 +82,14 @@ describe('http', () => {
     for (let i = 0; i < 8; i++) codes.push((await post()).status)
     expect(codes.slice(0, 6)).toEqual([200, 200, 200, 200, 200, 200])
     expect(codes.slice(6)).toEqual([429, 429])
+  })
+
+  test('the old host redirects, but keeps serving share images', async () => {
+    const r = await fetch(`${base}/lobby/abcd12?x=1`, { headers: { host: 'old.example.com' }, redirect: 'manual' })
+    expect(r.status).toBe(301)
+    expect(r.headers.get('location')).toBe(`${PUBLIC}/lobby/abcd12?x=1`)
+    const img = await fetch(`${base}/og/default.png`, { headers: { host: 'old.example.com' }, redirect: 'manual' })
+    expect(img.status).toBe(200)
   })
 
   test('lobbies, static files and bad paths', async () => {

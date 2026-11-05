@@ -2,6 +2,8 @@
 // clients only send the direction they want to go.
 
 import { FACTION_COUNT } from '../shared/factions'
+import { SPEED, TURN_RATE } from '../shared/protocol'
+export { SPEED, TURN_RATE }
 import { enclosedRegions, scratch, type Scratch } from './enclose'
 import { chunksOf, tileViewAngle, viewCells } from './chunks'
 import { nearest, nearestFrom, planet, subdivFor, type Planet } from '../shared/planet'
@@ -23,10 +25,6 @@ import {
 export const ROUND_MS = 4 * 60 * 1000
 export const INTERMISSION_MS = 12 * 1000
 export const RESPAWN_MS = 2500
-/** tiles per second */
-export const SPEED = 5
-/** radians per second */
-export const TURN_RATE = 5.5
 /** rooms keep at least this many players, filling the gap with bots */
 export const MIN_POPULATION = 12
 /** players a client gets full updates about: everyone within this angle of it, nearest first */

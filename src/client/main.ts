@@ -7,7 +7,8 @@ import { FLAG_BOT, packTile, type Battle, type ClientMsg, type ServerMsg, type S
 import { authToken, buzz, cast, fc, initFarcaster, ready } from './fc'
 import { Input } from './input'
 import { Net } from './net'
-import { Scene } from './scene'
+import { Scene, loadEarth } from './scene'
+import { sound } from './audio'
 import { drawCity } from './city'
 
 const WORLD = 'world'
@@ -72,7 +73,7 @@ function attract() {
   const n = 14
   const pl = planet(n)
   const tiles = new Uint8Array(pl.count)
-  const seeds = [[1, 1, 1], [-1, -1, 1], [-1, 1, -1], [1, -1, -1]].map((v) => new THREE.Vector3(...v).normalize())
+  const seeds = [[1, 0.6, 0.4], [-1, -0.2, -0.5]].map((v) => new THREE.Vector3(...v).normalize())
   for (let i = 0; i < pl.count; i++) {
     const p = new THREE.Vector3(pl.pos[i * 3], pl.pos[i * 3 + 1], pl.pos[i * 3 + 2])
     let best = -1, bd = -2
@@ -83,7 +84,7 @@ function attract() {
         best = k
       }
     })
-    tiles[i] = bd > 0.45 ? packTile(best + 1, 0) : 0
+    tiles[i] = bd > 0.35 ? packTile(best + 1, 0) : 0
   }
   scene.setPlanet(n, tiles)
   scene.crack = 0.6
@@ -104,12 +105,40 @@ const titleSvg = () =>
 function factionCards() {
   return FACTIONS.map(
     (f) => `
-    <button class="fcard ${pick === f.id ? 'on' : ''}" data-faction="${f.id}" style="--c:${f.color}">
-      <span class="fhead">${emblem(f.id, 30)}<span><span class="fname">${esc(f.name)}</span><span class="frole">${esc(f.role)}</span></span></span>
-      <span class="ftag">${esc(f.tagline)}</span>
-      <span class="fcount" data-count="${f.id}"></span>
+    <button class="side-card ${pick === f.id ? 'on' : ''}" data-faction="${f.id}" style="--c:${f.color}" aria-pressed="${pick === f.id}">
+      <span class="side-emblem">${emblem(f.id, 56)}</span>
+      <span class="side-name">${esc(f.name)}</span>
+      <span class="side-role">${esc(f.role)}</span>
+      <span class="side-tag">${esc(f.tagline)}</span>
+      <span class="side-count"><i></i><span data-count="${f.id}">—</span></span>
     </button>`,
-  ).join('')
+  ).join('<span class="vs" aria-hidden="true">VS</span>')
+}
+
+const ctaLabel = (lobby: string | null) => {
+  const f = faction(pick)
+  return lobby ? (f ? `Join the lobby for ${f.name}` : 'Join the lobby') : f ? `Fight for ${f.name}` : 'Join the war'
+}
+
+const soundIcon = () =>
+  sound.on
+    ? '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>'
+    : '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M17 9l5 6M22 9l-5 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>'
+
+function howSheet() {
+  return `<div class="sheet hidden" role="dialog" aria-modal="true" aria-label="How to play">
+    <div class="card how">
+      <div class="sheet-head"><div class="eyebrow">How to play</div><button class="ghost close-how" aria-label="Close">✕</button></div>
+      <ol class="steps">
+        <li><b>Leave your land.</b> Step outside your side's territory and you draw a glowing trail behind you.</li>
+        <li><b>Come back home.</b> The trail and everything it fences off becomes yours, enemy ground included.</li>
+        <li><b>Cut their trails.</b> Cross an enemy's trail to send them back to respawn. Don't stay out too long yourself.</li>
+        <li><b>Hold the most.</b> After four minutes the side holding more of the Earth wins the round.</li>
+      </ol>
+      <div class="muted">Steer by dragging anywhere (phone), pointing with the mouse, or WASD / arrow keys. Pinch or scroll to zoom.</div>
+      <div class="credits muted">Music: <a href="https://opengameart.org/content/mist-city" target="_blank" rel="noopener">“Mist City” by Section7</a>, <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>. Earth imagery: NASA Blue Marble and Earth at Night (public domain).</div>
+    </div>
+  </div>`
 }
 
 function barsHtml(counts: number[], total: number) {
@@ -134,46 +163,78 @@ function menu() {
   input.enabled = false
   game.net?.close()
   game.net = null
+  sound.duck(false)
   attract()
   const lobby = route.kind === 'lobby' ? route.id : null
   const who = fc.user
     ? `<div class="who">${fc.user.pfpUrl ? `<img src="${esc(fc.user.pfpUrl)}" alt="">` : ''}<span>Playing as <b>@${esc(fc.user.username ?? `fid ${fc.user.fid}`)}</b></span></div>`
-    : `<input class="nick" maxlength="16" placeholder="Nickname (optional)" value="${esc(nick)}">`
+    : `<label class="nick-wrap"><span class="sr">Nickname</span><input class="nick" maxlength="16" placeholder="Your name (optional)" value="${esc(nick)}" autocomplete="nickname"></label>`
   ui.innerHTML = `
   <div class="menu">
-    ${titleSvg()}
-    <div class="sub">The Farcaster split, fought street by street. Pick a side and take the network.</div>
-    <div id="battle-slot"></div>
-    ${lobby ? `<div class="lobby-badge">Private lobby <b>${esc(lobby)}</b></div>` : ''}
-    <nav class="items">
-      <button class="mi play">${lobby ? 'Join the lobby' : 'Play'}</button>
-      ${lobby ? '<button class="mi invite">Invite on Farcaster</button><button class="mi leave">Back to the big war</button>' : '<button class="mi new-lobby">Create a private lobby</button>'}
-      <button class="mi how-toggle" aria-expanded="false">How to play</button>
-    </nav>
-    <div class="how hidden">
-      <p>Leave your side's territory to draw a trail, then come back home: the trail and everything it encloses becomes yours. An enemy crossing your trail cuts it and sends you back to respawn, so don't stay out too long.</p>
-      <p>Steer with a finger (drag anywhere), the mouse, WASD or the arrow keys. The side holding the most of the network when the clock runs out wins the round, and the ground cracks along the front lines as time runs down.</p>
-    </div>
-    <div class="pick-label">Choose your side</div>
-    <div class="factions">${factionCards()}</div>
-    <button class="auto ${pick === 0 ? 'on' : ''}" data-faction="0">Auto-balance: put me on the smallest side</button>
-    ${who}
+    <header class="hero">
+      ${titleSvg()}
+      <p class="sub">The Farcaster split comes to blows. Pick a side and divide the Earth.</p>
+    </header>
+    <div class="spacer"></div>
+    <section class="panel">
+      <div id="battle-slot"></div>
+      ${lobby ? `<div class="lobby-badge"><span class="eyebrow">Private lobby</span><b>${esc(lobby)}</b><button class="ghost invite">Invite</button></div>` : ''}
+      <div class="sides">${factionCards()}</div>
+      <button class="auto ${pick === 0 ? 'on' : ''}" data-faction="0" aria-pressed="${pick === 0}">${pick === 0 ? '✓ ' : ''}Let the game pick the smaller side</button>
+      <div class="go-row">
+        ${who}
+        <button class="primary play" style="--c:${faction(pick)?.color ?? '#ff7a1a'}">${esc(ctaLabel(lobby))}</button>
+      </div>
+      <div class="live muted"><i class="dot"></i><span class="live-text">Connecting to the war…</span></div>
+      <nav class="tools">
+        ${lobby ? '<button class="ghost leave">Back to the big war</button>' : '<button class="ghost new-lobby">Private lobby</button>'}
+        <button class="ghost how-toggle">How to play</button>
+        <button class="ghost icon sound-toggle" aria-label="Sound">${soundIcon()}</button>
+      </nav>
+    </section>
+    ${howSheet()}
   </div>`
+  const cta = ui.querySelector<HTMLElement>('.play')!
   ui.querySelectorAll<HTMLElement>('[data-faction]').forEach((b) =>
     b.addEventListener('click', () => {
       pick = Number(b.dataset.faction)
       save('divide:faction', String(pick))
-      ui.querySelectorAll('[data-faction]').forEach((x) => x.classList.toggle('on', Number((x as HTMLElement).dataset.faction) === pick))
+      sound.unlock()
+      sound.play('pick')
+      ui.querySelectorAll<HTMLElement>('[data-faction]').forEach((x) => {
+        const on = Number(x.dataset.faction) === pick
+        x.classList.toggle('on', on)
+        x.setAttribute('aria-pressed', String(on))
+      })
+      const auto = ui.querySelector('.auto')!
+      auto.textContent = `${pick === 0 ? '✓ ' : ''}Let the game pick the smaller side`
+      cta.textContent = ctaLabel(lobby)
+      cta.style.setProperty('--c', faction(pick)?.color ?? '#ff7a1a')
     }),
   )
-  ui.querySelector('.play')!.addEventListener('click', () => play(lobby ?? WORLD))
-  ui.querySelector('.new-lobby')?.addEventListener('click', newLobby)
-  ui.querySelector('.invite')?.addEventListener('click', () => invite(lobby!))
-  ui.querySelector('.leave')?.addEventListener('click', () => go('/'))
-  const how = ui.querySelector('.how-toggle')!
-  how.addEventListener('click', () => {
-    const open = ui.querySelector('.how')!.classList.toggle('hidden') === false
-    how.setAttribute('aria-expanded', String(open))
+  cta.addEventListener('click', () => {
+    sound.unlock()
+    sound.play('start')
+    play(lobby ?? WORLD)
+  })
+  const tap = (sel: string, f: () => void) =>
+    ui.querySelector(sel)?.addEventListener('click', () => {
+      sound.unlock()
+      sound.play('click')
+      f()
+    })
+  tap('.new-lobby', newLobby)
+  tap('.invite', () => invite(lobby!))
+  tap('.leave', () => go('/'))
+  const sheet = ui.querySelector('.sheet')!
+  tap('.how-toggle', () => sheet.classList.remove('hidden'))
+  tap('.close-how', () => sheet.classList.add('hidden'))
+  sheet.addEventListener('click', (e) => e.target === sheet && sheet.classList.add('hidden'))
+  const st = ui.querySelector<HTMLElement>('.sound-toggle')!
+  st.addEventListener('click', () => {
+    sound.toggle()
+    st.innerHTML = soundIcon()
+    sound.play('click')
   })
   if (route.kind === 'battle') showBattle(route.id)
   liveCounts(lobby ?? WORLD)
@@ -192,10 +253,18 @@ async function showBattle(id: string) {
 async function liveCounts(room: string) {
   try {
     const r = await (await fetch(`/api/room/${room}`)).json()
-    if (!r.live) return
+    const live = ui.querySelector('.live-text')
+    const sizes: number[] = r.live ? r.sizes : FACTIONS.map(() => 0)
     for (const f of FACTIONS) {
       const el = ui.querySelector(`[data-count="${f.id}"]`)
-      if (el) el.textContent = `${r.sizes[f.id - 1]} fighting`
+      if (el) el.textContent = `${sizes[f.id - 1]} fighting now`
+    }
+    if (live) {
+      const humans = r.live ? r.humans : 0
+      const left = r.live && r.phase === 'play' ? Math.max(0, Math.round((r.endsAt - r.now) / 1000)) : 0
+      live.textContent = humans
+        ? `${humans} ${humans === 1 ? 'player' : 'players'} in the war${left ? ` · round ends in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}` : ''}`
+        : 'No players online yet. Bots hold the line until you arrive.'
     }
   } catch {}
 }
@@ -256,6 +325,8 @@ function play(room: string) {
   document.body.classList.add('playing')
   input.enabled = true
   input.dir = null
+  scene.want = null
+  sound.duck(true)
   scene.resetTimeline()
   // a fresh token for every (re)join: Quick Auth tokens are short-lived and the SDK caches valid ones
   const join = async (): Promise<ClientMsg> => ({
@@ -324,12 +395,15 @@ function onMsg(m: ServerMsg) {
     case 'event':
       if (m.kind === 'cut') {
         toast(`You cut ${m.who ?? 'an enemy'}!`, 'good')
+        sound.play('cut')
         buzz('success')
       } else if (m.kind === 'died') {
         toast(m.who ? `${m.who} cut your trail` : 'Your trail was cut', 'bad')
+        sound.play('died')
         buzz('error')
       } else if (m.kind === 'captured' && m.n) {
         toast(`+${m.n} tiles`, 'good')
+        sound.play(m.n > 30 ? 'bigCapture' : 'capture')
         buzz(m.n > 30 ? 'heavy' : 'light')
       }
       break
@@ -339,6 +413,7 @@ function onMsg(m: ServerMsg) {
       game.skew = Date.now() - m.now
       game.endsAt = m.nextAt
       endScreen()
+      sound.play(m.battle.winner === game.faction ? 'win' : 'lose')
       break
     case 'error':
       toast(m.message, 'bad')
@@ -471,6 +546,7 @@ function frame() {
   }
   if (input.dir && game.net) {
     const d = scene.worldDir(input.dir.x, input.dir.y)
+    scene.want = d
     game.net.dir(d.x, d.y, d.z)
   }
   labels(w, h)
@@ -509,11 +585,24 @@ function labels(w: number, h: number) {
 Object.assign(window, { divide: { scene, game } })
 
 async function boot() {
+  const bar = document.querySelector<HTMLElement>('#boot .boot-bar i')
+  const msg = document.querySelector<HTMLElement>('#boot .boot-msg')
+  if (bar) bar.classList.add('known')
+  const setP = (p: number) => bar && (bar.style.width = `${Math.round(15 + p * 85)}%`)
+  setP(0)
+  if (msg) msg.textContent = 'Mapping the Earth…'
   drawCity()
-  await initFarcaster()
+  // the mini app splash stays up until ready(), so the Earth and the menu are already there behind it
+  const [maps] = await Promise.all([loadEarth(setP), initFarcaster()])
+  scene.setMaps(maps)
   menu()
-  ready()
   requestAnimationFrame(frame)
+  ready()
+  const boot = document.getElementById('boot')
+  if (boot) {
+    boot.classList.add('done')
+    setTimeout(() => boot.remove(), 600)
+  }
 }
 
 boot()

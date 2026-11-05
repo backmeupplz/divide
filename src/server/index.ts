@@ -40,6 +40,8 @@ export type Options = {
   dataDir?: string
   /** verifies a Quick Auth token, returning the FID; tests replace it */
   verify?: (token: string) => Promise<number | null>
+  /** hosts the game moved away from; they redirect to publicUrl */
+  redirectHosts?: string
   /** tests pass a store that fails */
   store?: Store
   /** the Farcaster username for a verified FID; tests replace it */
@@ -69,7 +71,7 @@ function usernameLookup(api = process.env.FARCASTER_USER_API ?? 'https://api.far
 }
 
 export function start(opts: Options = {}) {
-  const base = (opts.publicUrl ?? process.env.PUBLIC_URL ?? 'https://divide.borodutch.com').replace(/\/$/, '')
+  const base = (opts.publicUrl ?? process.env.PUBLIC_URL ?? 'https://divide.quilcast.com').replace(/\/$/, '')
   const dist = opts.dist ?? join(import.meta.dir, '../../dist')
   const store: Store = opts.store ?? openStore(opts.dataDir)
   /** the store is a nice-to-have for a running match: a failed write is logged, never fatal */
@@ -95,6 +97,7 @@ export function start(opts: Options = {}) {
     })
 
   const lookupUsername = opts.lookupUsername ?? usernameLookup()
+  const oldHosts = new Set((opts.redirectHosts ?? process.env.REDIRECT_HOSTS ?? '').split(',').map((h) => h.trim()).filter(Boolean))
 
   const rooms = new Map<string, Room>()
   /** issued lobby ids, with when they expire while no match is running in them */
@@ -115,7 +118,22 @@ export function start(opts: Options = {}) {
   }
   getRoom(WORLD)
 
-  const loop = setInterval(() => {
+  // a fixed-step clock: timers fire late and unevenly, but clients map tick numbers onto time, so
+  // the ticks must come out at exactly TICK_HZ on average (late ones catch up, a long stall resets)
+  const period = 1000 / TICK_HZ
+  let due = performance.now()
+  let loop: ReturnType<typeof setTimeout>
+  const pump = () => {
+    let now = performance.now()
+    if (now - due > period * 8) due = now
+    while (now >= due) {
+      tickAll()
+      due += period
+      now = performance.now()
+    }
+    loop = setTimeout(pump, Math.max(1, due - now))
+  }
+  const tickAll = () => {
     const now = Date.now()
     for (const [id, r] of rooms) {
       // one broken room must not take every other match on the server down with it
@@ -125,7 +143,8 @@ export function start(opts: Options = {}) {
         if (lobbies.has(id)) setLobby(id, now + LOBBY_IDLE_MS)
       }
     }
-  }, 1000 / TICK_HZ)
+  }
+  loop = setTimeout(pump, period)
   const sweep = setInterval(() => {
     const now = Date.now()
     for (const [id, expires] of lobbies) {
@@ -199,6 +218,11 @@ export function start(opts: Options = {}) {
     async fetch(req, srv) {
       const url = new URL(req.url)
       const path = url.pathname
+      // the game moved: old hosts send people to the new one, but keep serving old casts' share
+      // images and anyone still connected
+      const host = req.headers.get('host')?.split(':')[0] ?? ''
+      if (oldHosts.has(host) && !path.startsWith('/og/') && path !== '/ws' && path !== '/health')
+        return Response.redirect(`${base}${path}${url.search}`, 301)
       if (path === '/ws') {
         const room = url.searchParams.get('room') ?? WORLD
         if (!ROOM_ID.test(room)) return new Response('bad room', { status: 400 })
@@ -355,7 +379,7 @@ export function start(opts: Options = {}) {
     server,
     rooms,
     stop() {
-      clearInterval(loop)
+      clearTimeout(loop)
       clearInterval(sweep)
       worker.terminate()
       server.stop(true)
