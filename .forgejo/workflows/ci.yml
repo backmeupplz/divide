@@ -9,10 +9,6 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-env:
-  # Production builds the Dockerfile; its FROM lines must use this same version.
-  BUN_VERSION: 1.4.4
-
 jobs:
   check:
     # Our own PRs and pushes run on the Mac runners; outsiders' PRs (AGit via the github bot) on Linux
@@ -20,14 +16,21 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Dockerfile uses the CI Bun version
+      # Production builds the Dockerfile, so CI runs the Bun its FROM lines pin (one version for all).
+      - name: Bun version from the Dockerfile
         run: |
-          froms=$(grep -E '^FROM ' Dockerfile)
+          froms=$(grep -iE '^[[:space:]]*FROM[[:space:]]' Dockerfile || true)
           echo "$froms"
-          if [ -z "$froms" ] || echo "$froms" | grep -v -E "^FROM oven/bun:${BUN_VERSION}-slim( AS [a-z]+)?$"; then
-            echo "::error file=Dockerfile::every FROM must be oven/bun:${BUN_VERSION}-slim"
+          if [ -z "$froms" ] || echo "$froms" | grep -v -E '^FROM oven/bun:[0-9]+\.[0-9]+\.[0-9]+-slim(@sha256:[0-9a-f]{64})?( AS [a-z]+)?$'; then
+            echo "::error file=Dockerfile::every FROM must be oven/bun:<x.y.z>-slim, optionally @sha256:<digest>"
             exit 1
           fi
+          versions=$(echo "$froms" | sed -E 's|^FROM oven/bun:([0-9.]+)-slim.*|\1|' | sort -u)
+          if [ "$(echo "$versions" | wc -l)" -ne 1 ]; then
+            echo "::error file=Dockerfile::every FROM must use the same Bun version, found: $(echo $versions)"
+            exit 1
+          fi
+          echo "BUN_VERSION=$versions" >> "$GITHUB_ENV"
       - if: runner.os == 'Linux'
         uses: oven-sh/setup-bun@v2
         with:

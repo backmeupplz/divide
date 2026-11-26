@@ -1,5 +1,5 @@
-# Production image (Tugport builds this file). Every FROM must use the Bun version CI pins
-# (BUN_VERSION in .forgejo/workflows/ci.yml); CI fails when they differ.
+# Production image (Tugport builds this file). Every FROM must use the same Bun version;
+# CI (.forgejo/workflows/ci.yml) reads it from here and tests on that Bun.
 
 # Build the client, and gate the deploy on the typecheck and the tests, on the Bun that will run them.
 FROM oven/bun:1.4.4-slim AS build
