@@ -2,7 +2,7 @@
 # CI (.forgejo/workflows/ci.yml) reads it from here and tests on that Bun.
 
 # Build the client, and gate the deploy on the typecheck and the tests, on the Bun that will run them.
-FROM oven/bun:1.4.4-slim AS build
+FROM oven/bun:1.4.5-slim@sha256:b780593f3e10918cbdaec3d5a08d52224b9198069a65eb47812085c2ec007643 AS build
 WORKDIR /app
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
@@ -10,7 +10,7 @@ COPY . .
 RUN bun run build && bun run typecheck && bun test
 
 # The runtime: the server's own dependencies, its sources and the built client.
-FROM oven/bun:1.4.4-slim
+FROM oven/bun:1.4.5-slim@sha256:b780593f3e10918cbdaec3d5a08d52224b9198069a65eb47812085c2ec007643
 # Debian security fixes the base image doesn't have yet (Bun never re-pushes its images).
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
